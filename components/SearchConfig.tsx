@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, MapPin, Instagram, Play, Users, Linkedin } from 'lucide-react'; // Added Linkedin
+import { Search, Play, Users, Mail, Linkedin } from 'lucide-react';
 import { SearchConfigState, PlatformSource } from '../lib/types';
 import { PROJECT_CONFIG } from '../config/project';
 
@@ -11,15 +11,18 @@ interface SearchConfigProps {
 }
 
 const PLATFORM_ICONS: Record<PlatformSource, React.ReactNode> = {
-  gmaps: <MapPin className="w-3.5 h-3.5 mr-1.5" />,
-  instagram: <Instagram className="w-3.5 h-3.5 mr-1.5" />,
-  linkedin: <Linkedin className="w-3.5 h-3.5 mr-1.5" />
+  gmail: <Mail className="w-4 h-4 mr-1.5" />,
+  linkedin: <Linkedin className="w-4 h-4 mr-1.5" />
 };
 
 const PLATFORM_LABELS: Record<PlatformSource, string> = {
-  gmaps: 'Maps',
-  instagram: 'IG',
+  gmail: 'Gmail',
   linkedin: 'LinkedIn'
+};
+
+const PLATFORM_DESCRIPTIONS: Record<PlatformSource, string> = {
+  gmail: 'Busca empresas en Google Maps y extrae emails',
+  linkedin: 'Busca dueños/CEOs de PYMEs en LinkedIn'
 };
 
 export function SearchConfig({ config, onChange, onSearch, isSearching }: SearchConfigProps) {
@@ -29,7 +32,9 @@ export function SearchConfig({ config, onChange, onSearch, isSearching }: Search
 
         {/* Search Input - 5 Cols */}
         <div className="md:col-span-5 space-y-2">
-          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Búsqueda Objetivo</label>
+          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+            {config.source === 'linkedin' ? 'Industria / Sector' : 'Búsqueda Objetivo'}
+          </label>
           <div className="relative group">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
               <Search className="h-4 w-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
@@ -39,7 +44,10 @@ export function SearchConfig({ config, onChange, onSearch, isSearching }: Search
               value={config.query}
               onChange={(e) => onChange({ query: e.target.value })}
               className="block w-full pl-9 pr-3 py-2.5 bg-secondary/50 border border-input rounded-lg focus:ring-1 focus:ring-primary focus:border-primary text-sm transition-all text-gray-900 placeholder:text-gray-500"
-              placeholder={`Ej: "${PROJECT_CONFIG.targets.icp}"`}
+              placeholder={config.source === 'linkedin'
+                ? 'Ej: "Gimnasios" o "Agencias de Marketing"'
+                : `Ej: "${PROJECT_CONFIG.targets.icp}"`
+              }
               disabled={isSearching}
             />
           </div>
@@ -69,11 +77,14 @@ export function SearchConfig({ config, onChange, onSearch, isSearching }: Search
         <div className="md:col-span-3 space-y-2">
           <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Plataforma</label>
           <div className="flex bg-secondary/50 p-1 rounded-lg border border-input h-[42px]">
-            {PROJECT_CONFIG.enabledPlatforms.map((platform) => (
+            {(['gmail', 'linkedin'] as PlatformSource[]).map((platform) => (
               <button
                 key={platform}
                 onClick={() => onChange({ source: platform })}
-                className={`flex-1 flex items-center justify-center rounded-md text-xs font-medium transition-all ${config.source === platform ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
+                title={PLATFORM_DESCRIPTIONS[platform]}
+                className={`flex-1 flex items-center justify-center rounded-md text-xs font-medium transition-all ${config.source === platform
+                  ? 'bg-background shadow-sm text-foreground'
+                  : 'text-muted-foreground hover:text-foreground'
                   }`}
                 disabled={isSearching}
               >
@@ -104,6 +115,11 @@ export function SearchConfig({ config, onChange, onSearch, isSearching }: Search
             )}
           </button>
         </div>
+      </div>
+
+      {/* Platform Description */}
+      <div className="mt-3 text-xs text-muted-foreground text-center">
+        {PLATFORM_DESCRIPTIONS[config.source]}
       </div>
     </div>
   );

@@ -71,6 +71,7 @@ function App() {
         setUserId(session.user.id);
         setCurrentPage('dashboard');
         loadProfile(session.user.id);
+        loadHistory(session.user.id);
       }
     });
 
@@ -100,6 +101,36 @@ function App() {
     }
   };
 
+  const loadHistory = async (uid: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('search_results')
+        .select('*')
+        .eq('user_id', uid)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error loading history:', error);
+        return;
+      }
+
+      if (data && data.length > 0) {
+        const sessions: SearchSession[] = data.map(row => ({
+          id: row.session_id || row.id,
+          date: new Date(row.created_at),
+          query: row.query || '',
+          source: row.platform as any || 'gmail',
+          resultsCount: Array.isArray(row.lead_data) ? row.lead_data.length : 0,
+          leads: Array.isArray(row.lead_data) ? row.lead_data : []
+        }));
+        setHistory(sessions);
+        console.log(`[HISTORY] Loaded ${sessions.length} sessions from cloud`);
+      }
+    } catch (e) {
+      console.error('Error loading history', e);
+    }
+  };
+
   // Auth Handlers
   const handleLogin = () => {
     // Called after successful Supabase login
@@ -109,6 +140,7 @@ function App() {
       if (session) {
         setUserId(session.user.id);
         loadProfile(session.user.id);
+        loadHistory(session.user.id);
       }
     });
   };

@@ -1,11 +1,11 @@
-export type PlatformSource = 'instagram' | 'gmaps' | 'linkedin';
+export type PlatformSource = 'gmail' | 'linkedin';
 export type SearchMode = 'fast' | 'deep';
 export type PageView = 'login' | 'dashboard' | 'campaigns';
 
 export interface ProjectConfig {
   clientId: string;
   clientName: string;
-  primaryColor: string; // Tailor UI color if needed, or just keep it simple
+  primaryColor: string;
   targets: {
     icp: string; // Ideal Customer Profile description
     locations: string[];
@@ -26,7 +26,7 @@ export interface Lead {
   location?: string;
   decisionMaker?: {
     name: string;
-    role: string; // e.g., "Founder", "Owner"
+    role: string; // e.g., "Founder", "Owner", "CEO"
     email: string;
     phone?: string;
     linkedin?: string;
@@ -34,10 +34,10 @@ export interface Lead {
     instagram?: string;
   };
   aiAnalysis: {
-    summary: string; // "Venden suplementos veganos..."
+    summary: string;
     painPoints: string[];
-    generatedIcebreaker: string; // The hook for the email
-    fullMessage: string; // The complete outreach email
+    generatedIcebreaker: string;
+    fullMessage: string;
   };
   status: 'scraped' | 'enriched' | 'ready' | 'contacted' | 'replied';
 }
