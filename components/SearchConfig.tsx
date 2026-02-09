@@ -31,26 +31,18 @@ export function SearchConfig({ config, onChange, onSearch, onStop, isSearching }
     <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
       <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
 
-        {/* Search Input - 5 Cols */}
+        {/* Search Input - 5 Cols (HIDDEN/FIXED for Fran) */}
         <div className="md:col-span-5 space-y-2">
           <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-            {config.source === 'linkedin' ? 'Industria / Sector' : 'Búsqueda Objetivo'}
+            Búsqueda Objetivo (Automática)
           </label>
           <div className="relative group">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <Search className="h-4 w-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
+              <Search className="h-4 w-4 text-green-600" />
             </div>
-            <input
-              type="text"
-              value={config.query}
-              onChange={(e) => onChange({ query: e.target.value })}
-              className="block w-full pl-9 pr-3 py-2.5 bg-secondary/50 border border-input rounded-lg focus:ring-1 focus:ring-primary focus:border-primary text-sm transition-all text-gray-900 placeholder:text-gray-500"
-              placeholder={config.source === 'linkedin'
-                ? 'Ej: "Gimnasios" o "Agencias de Marketing"'
-                : `Ej: "${PROJECT_CONFIG.targets.icp}"`
-              }
-              disabled={isSearching}
-            />
+            <div className="block w-full pl-9 pr-3 py-2.5 bg-green-50/50 border border-green-200 rounded-lg text-sm text-green-800 font-medium">
+              Sector Wellness & Salud (Predefinido)
+            </div>
           </div>
         </div>
 
