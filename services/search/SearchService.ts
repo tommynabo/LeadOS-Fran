@@ -484,6 +484,11 @@ Responde SOLO JSON:
                 lead.aiAnalysis.adStatus = analysis.adStatus;
                 lead.aiAnalysis.socialStatus = analysis.socialStatus;
                 lead.aiAnalysis.fullMessage = analysis.personalizedMessage;
+                // RESTORED FIELDS:
+                lead.aiAnalysis.psychologicalProfile = analysis.psychologicalProfile;
+                lead.aiAnalysis.businessMoment = analysis.businessMoment;
+                lead.aiAnalysis.salesAngle = analysis.salesAngle;
+
                 lead.status = 'ready'; // Ready to be saved
 
                 validLeads.push(lead);

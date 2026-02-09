@@ -131,10 +131,10 @@ export function LeadsTable({ leads, onViewMessage }: LeadsTableProps) {
 
                     <div className="flex items-start gap-2 mb-2">
                       <Sparkles className="w-3.5 h-3.5 text-primary mt-0.5 flex-shrink-0" />
-                      <span className="text-xs font-bold text-foreground uppercase tracking-wide">Insight Clave</span>
+                      <span className="text-xs font-bold text-foreground uppercase tracking-wide">Cuello de Botella</span>
                     </div>
                     <p className="text-sm text-muted-foreground leading-relaxed">
-                      {lead.aiAnalysis.summary}
+                      {lead.aiAnalysis.bottleneck || lead.aiAnalysis.executiveSummary || lead.aiAnalysis.summary}
                     </p>
                   </div>
                 </td>
