@@ -1,7 +1,6 @@
-import React from 'react';
-import { Search, Play, Users, Mail, Linkedin } from 'lucide-react';
-import { SearchConfigState, PlatformSource } from '../lib/types';
-import { PROJECT_CONFIG } from '../config/project';
+import React, { useState } from 'react';
+import { Play, Clock, Zap, Users } from 'lucide-react';
+import { SearchConfigState } from '../lib/types';
 
 interface SearchConfigProps {
   config: SearchConfigState;
@@ -11,112 +10,128 @@ interface SearchConfigProps {
   isSearching: boolean;
 }
 
-const PLATFORM_ICONS: Record<PlatformSource, React.ReactNode> = {
-  gmail: <Mail className="w-4 h-4 mr-1.5" />,
-  linkedin: <Linkedin className="w-4 h-4 mr-1.5" />
-};
-
-const PLATFORM_LABELS: Record<PlatformSource, string> = {
-  gmail: 'Gmail',
-  linkedin: 'LinkedIn'
-};
-
-const PLATFORM_DESCRIPTIONS: Record<PlatformSource, string> = {
-  gmail: 'Busca empresas en Google Maps y extrae emails',
-  linkedin: 'Busca dueños/CEOs de PYMEs en LinkedIn'
-};
-
 export function SearchConfig({ config, onChange, onSearch, onStop, isSearching }: SearchConfigProps) {
+  const [autoPilotEnabled, setAutoPilotEnabled] = useState(false);
+  const [scheduledTime, setScheduledTime] = useState('09:00');
+
+  // Hardcoded goal text as per screenshot instruction
+  const MANUAL_GOAL_TEXT = "Objetivo: Mujeres directivas/gerentes, +40 años, buscando reinvención, marca personal, autoras/speakers";
+
   return (
-    <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-[fadeIn_0.5s_ease-out]">
 
-        {/* Search Input - 5 Cols (HIDDEN/FIXED for Fran) */}
-        <div className="md:col-span-5 space-y-2">
-          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-            Búsqueda Objetivo (Automática)
-          </label>
-          <div className="relative group">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <Search className="h-4 w-4 text-green-600" />
-            </div>
-            <div className="block w-full pl-9 pr-3 py-2.5 bg-green-50/50 border border-green-200 rounded-lg text-sm text-green-800 font-medium">
-              Sector Wellness & Salud (Predefinido)
-            </div>
+      {/* CARD 1: MANUAL GENERATOR */}
+      <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6 shadow-xl relative overflow-hidden group">
+        <div className="absolute top-0 left-0 w-1 h-full bg-blue-500/50" />
+
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center border border-blue-500/20">
+            <Zap className="w-5 h-5 text-blue-400 fill-current" />
+          </div>
+          <div>
+            <h3 className="font-bold text-lg text-white">Generador Manual</h3>
+            <p className="text-xs text-zinc-400">Creación bajo demanda</p>
           </div>
         </div>
 
-        {/* Quantity - 2 Cols */}
-        <div className="md:col-span-2 space-y-2">
-          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Cantidad</label>
-          <div className="relative group">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <Users className="h-4 w-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
+        <div className="space-y-6">
+          {/* Slider */}
+          <div className="space-y-3">
+            <div className="flex justify-between items-center text-xs font-bold text-zinc-400 tracking-wider">
+              <span>CANTIDAD DE LEADS</span>
+              <span>MAX: 50</span>
             </div>
-            <input
-              type="number"
-              min="1"
-              max="100"
-              value={config.maxResults}
-              onChange={(e) => onChange({ maxResults: parseInt(e.target.value) || 10 })}
-              className="block w-full pl-9 pr-3 py-2.5 bg-secondary/50 border border-input rounded-lg focus:ring-1 focus:ring-primary focus:border-primary text-sm transition-all text-gray-900 placeholder:text-gray-500"
-              placeholder="10"
-              disabled={isSearching}
-            />
-          </div>
-        </div>
-
-        {/* Source Selector - 3 Cols */}
-        <div className="md:col-span-3 space-y-2">
-          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Plataforma</label>
-          <div className="flex bg-secondary/50 p-1 rounded-lg border border-input h-[42px]">
-            {(['gmail', 'linkedin'] as PlatformSource[]).map((platform) => (
-              <button
-                key={platform}
-                onClick={() => onChange({ source: platform })}
-                title={PLATFORM_DESCRIPTIONS[platform]}
-                className={`flex-1 flex items-center justify-center rounded-md text-xs font-medium transition-all ${config.source === platform
-                  ? 'bg-background shadow-sm text-blue-600 font-semibold'
-                  : 'text-muted-foreground hover:text-foreground'
-                  }`}
+            <div className="flex items-center gap-4">
+              <input
+                type="range"
+                min="1"
+                max="50"
+                step="1"
+                value={config.maxResults}
+                onChange={(e) => onChange({ maxResults: parseInt(e.target.value) })}
                 disabled={isSearching}
-              >
-                <span className={config.source === platform ? 'text-blue-600' : ''}>
-                  {PLATFORM_ICONS[platform]}
-                </span>
-                {PLATFORM_LABELS[platform]}
-              </button>
-            ))}
+                className="flex-1 h-2 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-blue-500 disabled:opacity-50"
+              />
+              <div className="w-12 h-10 bg-zinc-800 rounded-md border border-zinc-700 flex items-center justify-center font-mono font-bold text-white">
+                {config.maxResults}
+              </div>
+            </div>
           </div>
-        </div>
 
-        {/* Action Button - 2 Cols */}
-        <div className="md:col-span-2 flex flex-col justify-end">
+          {/* Goal Description (Static) */}
+          <div className="bg-zinc-950/50 border border-zinc-800 rounded-lg p-3">
+            <p className="text-[11px] text-zinc-400 leading-relaxed font-medium">
+              <span className="text-zinc-200 font-bold block mb-1">Objetivo:</span>
+              {MANUAL_GOAL_TEXT}
+            </p>
+          </div>
+
+          {/* Action Button */}
           {isSearching ? (
             <button
               onClick={onStop}
-              className="w-full h-[42px] flex items-center justify-center rounded-lg font-semibold text-sm transition-all shadow-lg shadow-red-500/20 bg-red-500 text-white hover:bg-red-600 active:scale-[0.98]"
+              className="w-full py-3 rounded-lg font-bold text-sm bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-all flex items-center justify-center gap-2"
             >
-              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" />
-              Detener
+              <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+              Detener Búsqueda
             </button>
           ) : (
             <button
               onClick={onSearch}
-              disabled={!config.query}
-              className="w-full h-[42px] flex items-center justify-center rounded-lg font-semibold text-sm transition-all shadow-lg shadow-primary/20 bg-primary text-primary-foreground hover:brightness-110 active:scale-[0.98]"
+              className="w-full py-3 rounded-lg font-bold text-sm bg-cyan-400 text-black hover:bg-cyan-300 hover:shadow-[0_0_15px_rgba(34,211,238,0.4)] transition-all flex items-center justify-center gap-2"
             >
-              <Play className="w-3.5 h-3.5 mr-2 fill-current" />
-              Iniciar
+              <Play className="w-4 h-4 fill-current" />
+              Generar Ahora
             </button>
           )}
+
         </div>
       </div>
 
-      {/* Platform Description */}
-      <div className="mt-3 text-xs text-muted-foreground text-center">
-        {PLATFORM_DESCRIPTIONS[config.source]}
+      {/* CARD 2: AUTO PILOT */}
+      <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6 shadow-xl relative overflow-hidden group">
+        <div className="absolute top-0 right-0 p-4">
+          {/* Status Dot */}
+          <div className={`w-3 h-3 rounded-full ${autoPilotEnabled ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' : 'bg-zinc-700'}`} />
+        </div>
+
+        <div className="flex items-center gap-3 mb-8">
+          <div className="w-10 h-10 rounded-lg bg-zinc-800 flex items-center justify-center border border-zinc-700">
+            <Clock className="w-5 h-5 text-zinc-400" />
+          </div>
+          <div>
+            <h3 className="font-bold text-lg text-white">Piloto Automático</h3>
+            <p className="text-xs text-zinc-400">Activo diariamente</p>
+          </div>
+        </div>
+
+        <div className="flex flex-col items-center justify-center space-y-4 py-4">
+          {/* Clock Display */}
+          <div className="text-5xl font-bold text-zinc-200 tracking-tighter font-mono group-hover:text-white transition-colors">
+            {scheduledTime}
+          </div>
+
+          <input
+            type="time"
+            value={scheduledTime}
+            onChange={(e) => setScheduledTime(e.target.value)}
+            className="bg-transparent text-xs font-bold text-zinc-500 uppercase tracking-widest border-b border-zinc-700 hover:text-zinc-300 hover:border-zinc-500 focus:outline-none transition-colors text-center cursor-pointer w-24"
+          />
+          <span className="text-[10px] text-zinc-600 uppercase tracking-widest font-bold">Cambiar Hora</span>
+        </div>
+
+        <div className="mt-8 pt-6 border-t border-zinc-800 flex items-center justify-between">
+          <span className="text-sm font-medium text-zinc-300">Estado del Sistema</span>
+
+          <button
+            onClick={() => setAutoPilotEnabled(!autoPilotEnabled)}
+            className={`w-12 h-6 rounded-full p-1 transition-colors duration-300 ${autoPilotEnabled ? 'bg-white' : 'bg-zinc-700'}`}
+          >
+            <div className={`w-4 h-4 rounded-full bg-black shadow-sm transform transition-transform duration-300 ${autoPilotEnabled ? 'translate-x-6' : 'translate-x-0'}`} />
+          </button>
+        </div>
       </div>
+
     </div>
   );
 }

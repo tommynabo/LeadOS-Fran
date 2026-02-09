@@ -1,4 +1,5 @@
 import { Lead, SearchConfigState } from '../../lib/types';
+import { supabase } from '../../lib/supabase';
 
 export type LogCallback = (message: string) => void;
 export type ResultCallback = (leads: Lead[]) => void;
@@ -352,12 +353,46 @@ Responde SOLO JSON:
         // Actually, we'll just paginate or fetch MORE from Maps initially.
         // Google Maps Scraper supports 'maxCrawledPlaces'.
 
+        // 0. PRE-FLIGHT: Fetch ALL existing websites for this user to prevent duplicates
+        // This is crucial for the "Never Duplicate" rule
+        const existingWebsites = new Set<string>();
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+                // Fetch all previous search results for this user
+                // Optimize: We could just fetch the 'lead_data' column but it's JSONB. 
+                // Better: We might need a separate 'leads' table in the future, but for now we parse the JSON.
+                // Actually, due to JSONB structure, let's fetch the last 100 sessions or so.
+                // OR better: Create a RPC or just iterate. For now, let's fetch recent history.
+                const { data } = await supabase
+                    .from('search_results_fran')
+                    .select('lead_data')
+                    .eq('user_id', user.id)
+                    .order('created_at', { ascending: false })
+                    .limit(50); // Check last 50 batches approx 500 leads
+
+                if (data) {
+                    data.forEach((row: any) => {
+                        if (Array.isArray(row.lead_data)) {
+                            row.lead_data.forEach((l: any) => {
+                                if (l.website) existingWebsites.add(l.website.toLowerCase().replace(/^https?:\/\//, '').replace(/\/$/, ''));
+                                if (l.companyName) existingWebsites.add(l.companyName.toLowerCase());
+                            });
+                        }
+                    });
+                }
+                onLog(`[SYSTEM] 🛡️ Sistema Anti-Duplicados activado. ${existingWebsites.size} empresas en lista negra.`);
+            }
+        } catch (e) {
+            console.error('Error fetching duplicates', e);
+        }
+
         while (validLeads.length < targetCount && this.isRunning && loopCount < MAX_LOOPS) {
             loopCount++;
             const needed = targetCount - validLeads.length;
 
-            // Over-fetch factor: 5x because conversion rate is usually 20%
-            const fetchAmount = needed * 5;
+            // Over-fetch factor: INCREASED TO 10x for maximum yield guarantee
+            const fetchAmount = needed * 10;
 
             onLog(`[LOOP ${loopCount}] 🔍 Buscando ${fetchAmount} candidatos en Maps para obtener ${needed} válidos...`);
 
@@ -377,14 +412,27 @@ Responde SOLO JSON:
 
             // Filter out those already found
             const newCandidates = mapsResults.filter((m: any) => {
-                // Ignore if we already have this company or website
-                const isDuplicate = validLeads.some(l => l.companyName === m.title || (m.website && l.website === m.website));
-                return !isDuplicate;
+                // 1. Check local duplicates in this batch
+                const isLocalDuplicate = validLeads.some(l => l.companyName === m.title || (m.website && l.website === m.website));
+
+                // 2. Check GLOBAL duplicates (Supabase history)
+                const cleanWeb = m.website?.replace(/^https?:\/\//, '').replace(/\/$/, '').toLowerCase();
+                const cleanName = m.title?.toLowerCase();
+                const isGlobalDuplicate = existingWebsites.has(cleanWeb) || existingWebsites.has(cleanName);
+
+                if (isGlobalDuplicate) {
+                    // onLog(`[SKIP] 🚫 ${m.title} ya existe en tu base de datos.`);
+                    return false;
+                }
+
+                return !isLocalDuplicate;
             });
 
             if (newCandidates.length === 0) {
-                onLog(`[LOOP ${loopCount}] ⚠️ No se encontraron nuevos candidatos en esta zona/query.`);
-                break; // No more results likely
+                onLog(`[LOOP ${loopCount}] ⚠️ Todos los candidatos encontrados ya existen o están duplicados.`);
+                // If we found nothing new, maybe expand location or stop?
+                // For now, break to avoid infinite loop of same results
+                break;
             }
 
             // Convert and process
