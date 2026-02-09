@@ -421,18 +421,59 @@ Responde SOLO JSON:
             const candidatesWithWeb = rawLeads.filter(l => l.website);
             onLog(`[LOOP ${loopCount}] 📉 ${candidatesWithWeb.length} candidatos tienen web. Procediendo a enriquecimiento...`);
 
-            // Contact Enrichment - Only for those missing emails
-            // ... (Re-using similar logic to before but structured for batching)
+            // ═══════════════════════════════════════════════════════════════════════════
+            // STAGE 2.5: ADVANCED OWNER DISCOVERY (The "Sniper" Phase)
+            // ═══════════════════════════════════════════════════════════════════════════
+            // For leads that are promising (have website) but missing OWNER NAME or EMAIL
+            const leadsToEnrich = candidatesWithWeb;
 
-            // Let's just process ALL of them through contact scraper if they lack email
-            const processingQueue = candidatesWithWeb;
+            if (leadsToEnrich.length > 0) {
+                onLog(`[LOOP ${loopCount}] 🕵️‍♂️ Iniciando Protocolo "Sniper" para ${leadsToEnrich.length} empresas...`);
 
-            // Batch scraping for emails
+                const BATCH_SIZE = 5; // Smaller batch for high precision
+                for (let i = 0; i < leadsToEnrich.length; i += BATCH_SIZE) {
+                    if (!this.isRunning) break;
+                    const batch = leadsToEnrich.slice(i, i + BATCH_SIZE);
+
+                    await Promise.all(batch.map(async (lead) => {
+                        // 1. Find Owner Name & LinkedIn if missing
+                        if (!lead.decisionMaker?.name) {
+                            const ownerInfo = await this.findOwnerProfile(lead.companyName, onLog);
+                            if (ownerInfo) {
+                                lead.decisionMaker!.name = ownerInfo.name;
+                                lead.decisionMaker!.linkedin = ownerInfo.linkedin;
+                                lead.decisionMaker!.role = ownerInfo.role;
+                                onLog(`[SNIPER] 🎯 Decisor detectado para ${lead.companyName}: ${ownerInfo.name} (${ownerInfo.role})`);
+                            }
+                        }
+
+                        // 2. Find Direct Verification (Valid Email & Socials)
+                        // If we have a name, we can try to find specific email patterns or verify generic ones
+                        if (lead.decisionMaker?.name) {
+                            const extraContact = await this.enrichOwnerContact(lead, onLog);
+                            if (extraContact.email && !lead.decisionMaker?.email) {
+                                lead.decisionMaker!.email = extraContact.email;
+                                onLog(`[SNIPER] 📧 Email personal encontrado: ${extraContact.email}`);
+                            }
+                            if (extraContact.instagram) {
+                                lead.decisionMaker!.instagram = extraContact.instagram;
+                            }
+                        }
+                    }));
+                }
+            }
+
+            // Contact Enrichment - Standard fallback (Website crawling)
+            // We do this AFTER "Sniper" because Sniper is more accurate for Owners.
+            // ... (keeping existing logic for gathering generic emails as backup)
+
+            const processingQueue = leadsToEnrich.filter(l => !l.decisionMaker?.email);
+
+            // Batch scraping for emails (FALLBACK)
             if (processingQueue.length > 0) {
-                const needsEmail = processingQueue.filter(l => !l.decisionMaker?.email);
+                const needsEmail = processingQueue;
                 if (needsEmail.length > 0) {
-                    onLog(`[LOOP ${loopCount}] 📧 Buscando emails para ${needsEmail.length} webs...`);
-                    // We can do this in one go
+                    onLog(`[LOOP ${loopCount}] 🕸️ Escaneando webs (Fallback) para ${needsEmail.length} empresas...`);
                     try {
                         const contactResults = await this.callApifyActor(CONTACT_SCRAPER, {
                             startUrls: needsEmail.map(l => ({ url: `https://${l.website}` })),
@@ -440,18 +481,15 @@ Responde SOLO JSON:
                             sameDomainOnly: true,
                         }, () => { });
 
-                        // Map back
                         for (const cr of contactResults) {
                             const url = cr.url || '';
                             const lead = needsEmail.find(l => url.includes(l.website));
                             if (lead && cr.emails?.length) {
-                                // Filter bad emails
                                 const valid = cr.emails.filter((e: string) => !e.includes('wix') && !e.includes('sentry') && e.includes('@'));
-                                if (valid.length > 0) lead.decisionMaker!.email = valid[0];
-                            }
-                            // Try to find instagram/facebook links if in social links
-                            if (lead && cr.socialMedia) {
-                                // logic to extract socials could be here
+                                // Only assign if we didn't find a personal one already
+                                if (valid.length > 0 && !lead.decisionMaker!.email) {
+                                    lead.decisionMaker!.email = valid[0];
+                                }
                             }
                         }
                     } catch (e) { onLog(`[ERROR] Fallo en contact scraper: ${e}`); }
@@ -460,7 +498,7 @@ Responde SOLO JSON:
 
             // FILTER: Strict requirement - Must have Email
             // Enhance: If no email found, maybe we discard? For Fran, EMAIL is key.
-            const successfulLeads = processingQueue.filter(l => l.decisionMaker?.email);
+            const successfulLeads = leadsToEnrich.filter(l => l.decisionMaker?.email);
             onLog(`[LOOP ${loopCount}] ✅ ${successfulLeads.length} leads conseguidos con Email.`);
 
             // DEEP RESEARCH & AI ANALYSIS
@@ -503,6 +541,113 @@ Responde SOLO JSON:
         }
 
         onComplete(validLeads);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // HELPERS: OWNER DISCOVERY
+    // ═══════════════════════════════════════════════════════════════════════════
+    private async findOwnerProfile(companyName: string, onLog: LogCallback): Promise<{ name: string, role: string, linkedin: string } | null> {
+        if (!this.isRunning) return null;
+        try {
+            // Priority 1: LinkedIn Profile of Owner
+            const query = `site:linkedin.com/in "${companyName}" (CEO OR Fundador OR Dueño OR Director OR Propietario) -intitle:jobs`;
+            const results = await this.callApifyActor(GOOGLE_SEARCH_SCRAPER, {
+                queries: query,
+                resultsPerPage: 2,
+                countryCode: 'es',
+                languageCode: 'es'
+            }, () => { });
+
+            if (results?.[0]?.organicResults?.length > 0) {
+                const bestMatch = results[0].organicResults[0];
+                const title = bestMatch.title || '';
+
+                // Parse "Name - Role - Company | LinkedIn" or similar variations
+                // Example: "Juan Pérez - CEO - Empresa X | LinkedIn"
+                const parts = title.split(' - ');
+                // Rough heuristic: First part is usually name
+                let name = parts[0]?.replace(' | LinkedIn', '').replace(/[\(\)]/g, '').trim();
+
+                // If name looks like "Juan Pérez", good. If "CEO de Empresa", bad.
+                // We use the helper to check if it's a role
+                if (this.isRole(name)) {
+                    // Maybe the name is in the second part? "CEO - Juan Pérez"
+                    if (parts[1] && !this.isRole(parts[1])) name = parts[1];
+                    else name = ''; // Failed to extract clean name
+                }
+
+                const role = this.extractRole(title) || 'Propietario';
+
+                if (name && !name.includes('LinkedIn') && !name.includes('Perfiles') && name.split(' ').length < 5) {
+                    return { name, role, linkedin: bestMatch.url };
+                }
+            }
+        } catch (e) {
+            // Ignore error
+        }
+        return null;
+    }
+
+    private async enrichOwnerContact(lead: Lead, onLog: LogCallback): Promise<{ email?: string, instagram?: string }> {
+        if (!this.isRunning) return {};
+        const result: { email?: string, instagram?: string } = {};
+
+        // 1. Try to verify/find email if we have name & domain
+        if (lead.decisionMaker?.name && lead.website) {
+            try {
+                const domain = lead.website.replace(/^https?:\/\//, '').replace('www.', '').split('/')[0];
+                // Search for "Name" "@domain.com" to see if it appears in text
+                const emailQuery = `"${lead.decisionMaker.name}" "@${domain}" email OR contacto`;
+
+                const emailResults = await this.callApifyActor(GOOGLE_SEARCH_SCRAPER, {
+                    queries: emailQuery,
+                    resultsPerPage: 2,
+                    countryCode: 'es',
+                    languageCode: 'es'
+                }, () => { });
+
+                // Try to extract email from snippets
+                if (emailResults?.[0]?.organicResults) {
+                    const text = JSON.stringify(emailResults[0].organicResults);
+                    // Regex for email
+                    const emailMatch = text.match(new RegExp(`[a-zA-Z0-9._%+-]+@${domain.replace('.', '\\.')}`, 'i'));
+                    if (emailMatch) {
+                        result.email = emailMatch[0];
+                    }
+                }
+            } catch (e) { }
+        }
+
+        // 2. Try to find Instagram (Business or Personal)
+        try {
+            // We look for the company IG or the owner's IG
+            // Priority: Company IG is safer to find. Owner IG is hard without more tools.
+            const igQuery = `site:instagram.com "${lead.companyName}"`;
+            const igResults = await this.callApifyActor(GOOGLE_SEARCH_SCRAPER, {
+                queries: igQuery,
+                resultsPerPage: 1,
+                countryCode: 'es',
+            }, () => { });
+
+            if (igResults?.[0]?.organicResults?.[0]) {
+                result.instagram = igResults[0].organicResults[0].url;
+            }
+        } catch (e) { }
+
+        return result;
+    }
+
+    private extractRole(text: string): string | null {
+        const roles = ['CEO', 'Fundador', 'Founder', 'Dueño', 'Propietario', 'Director', 'Gerente', 'Co-Founder', 'Cofundador', 'Socio'];
+        for (const role of roles) {
+            if (text.toLowerCase().includes(role.toLowerCase())) return role;
+        }
+        return null;
+    }
+
+    private isRole(text: string): boolean {
+        const roles = ['ceo', 'fundador', 'founder', 'dueño', 'propietario', 'director', 'gerente', 'socio', 'manager'];
+        return roles.some(r => text.toLowerCase().includes(r));
     }
 
     // Keeping LinkedIn method as fallback/legacy for now
