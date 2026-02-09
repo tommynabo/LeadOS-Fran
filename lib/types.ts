@@ -42,6 +42,10 @@ export interface Lead {
     psychologicalProfile: string; // New structured field
     businessMoment: string;       // New structured field
     salesAngle: string;           // New structured field
+    executiveSummary: string;     // New: "Resumen Ejecutivo"
+    adStatus: 'Active' | 'Inactive' | 'Unknown'; // New: Ads validation
+    socialStatus: 'Active' | 'Inactive' | 'Unknown'; // New: Socials validation
+    bottleneck: string;           // New: Detected bottleneck
   };
   status: 'scraped' | 'enriched' | 'ready' | 'contacted' | 'replied';
 }

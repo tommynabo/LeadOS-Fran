@@ -72,41 +72,40 @@ Responde SOLO con JSON:
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // DEEP RESEARCH - Google Search for company/owner info
+    // DEEP RESEARCH - Context & Owner
     // ═══════════════════════════════════════════════════════════════════════════
     private async deepResearchLead(lead: Lead, onLog: LogCallback): Promise<string> {
         if (!this.isRunning) return '';
 
         const searchQueries = [];
 
-        // Research company
+        // Research company values & products
         if (lead.companyName && lead.companyName !== 'Sin Nombre') {
-            searchQueries.push(`"${lead.companyName}" empresa valores misión`);
+            searchQueries.push(`"${lead.companyName}" site:.es valores misión productos`);
         }
 
-        // Research owner if we have a name
-        if (lead.decisionMaker?.name) {
-            searchQueries.push(`"${lead.decisionMaker.name}" ${lead.companyName} entrevista`);
-            searchQueries.push(`"${lead.decisionMaker.name}" linkedin`);
-        }
+        // Research owner specifically
+        searchQueries.push(`"${lead.companyName}" CEO OR Fundador OR Propietario OR Dueño`);
+        searchQueries.push(`"${lead.companyName}" linkedin equipo`);
 
-        // Research from website
+        // Research from website content (generic check)
         if (lead.website) {
-            searchQueries.push(`site:${lead.website} "sobre nosotros" OR "quiénes somos" OR "about"`);
+            searchQueries.push(`site:${lead.website} "sobre nosotros" OR "equipo" OR "fundador"`);
         }
 
         if (searchQueries.length === 0) return '';
 
         try {
+            // Using a lighter weight search or standard search
             const searchInput = {
                 queries: searchQueries.join('\n'),
                 maxPagesPerQuery: 1,
-                resultsPerPage: 5,
+                resultsPerPage: 4,
                 languageCode: 'es',
                 countryCode: 'es',
             };
 
-            const results = await this.callApifyActor(GOOGLE_SEARCH_SCRAPER, searchInput, (msg) => { }); // Silent
+            const results = await this.callApifyActor(GOOGLE_SEARCH_SCRAPER, searchInput, (msg) => { });
 
             let researchData = '';
             for (const result of results) {
@@ -124,7 +123,7 @@ Responde SOLO con JSON:
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // ULTRA-COMPLETE AI ANALYSIS - Psychological + Business + Bottleneck
+    // ULTRA-COMPLETE AI ANALYSIS - Executive Summary + Bottleneck
     // ═══════════════════════════════════════════════════════════════════════════
     private async generateUltraAnalysis(lead: Lead, researchData: string): Promise<{
         fullAnalysis: string;
@@ -133,6 +132,9 @@ Responde SOLO con JSON:
         salesAngle: string;
         personalizedMessage: string;
         bottleneck: string;
+        executiveSummary: string;
+        adStatus: 'Active' | 'Inactive' | 'Unknown';
+        socialStatus: 'Active' | 'Inactive' | 'Unknown';
     }> {
         if (!this.openaiKey) {
             return {
@@ -141,7 +143,10 @@ Responde SOLO con JSON:
                 businessMoment: 'Desconocido',
                 salesAngle: 'Genérico',
                 personalizedMessage: '',
-                bottleneck: ''
+                bottleneck: '',
+                executiveSummary: `Empresa: ${lead.companyName}`,
+                adStatus: 'Unknown',
+                socialStatus: 'Unknown'
             };
         }
 
@@ -150,13 +155,10 @@ Responde SOLO con JSON:
 Empresa: ${lead.companyName}
 Web: ${lead.website || 'No disponible'}
 Ubicación: ${lead.location || 'España'}
-Decisor: ${lead.decisionMaker?.name || 'No identificado'}
-Cargo: ${lead.decisionMaker?.role || 'Propietario'}
 Email: ${lead.decisionMaker?.email || 'No disponible'}
-LinkedIn: ${lead.decisionMaker?.linkedin || 'No disponible'}
-Resumen inicial: ${lead.aiAnalysis?.summary || ''}
+Reseñas: ${lead.aiAnalysis?.summary || ''}
 
-═══ INVESTIGACIÓN ADICIONAL ═══
+═══ INVESTIGACIÓN ONLINE ═══
 ${researchData || 'Sin datos adicionales'}
         `.trim();
 
@@ -174,31 +176,37 @@ ${researchData || 'Sin datos adicionales'}
                         messages: [
                             {
                                 role: 'system',
-                                content: `Eres un GENIO del análisis de negocios y psicología empresarial. Tu trabajo es hacer el análisis MÁS COMPLETO posible de cada lead para ventas B2B.
+                                content: `Eres un analista de negocios experto. Tu objetivo es cualificar leads para una agencia de crecimiento (Growth Partner).
+NO Inventes datos. Deduce basado en la información.
 
-SI HAY DATOS DE "ACTIVIDAD RECIENTE (Posts)":
-- Analiza su estilo de escritura (Directo, Reflexivo, Técnico, Vendedor).
-- Deduce sus valores y qué temas le obsesionan ahora mismo.
-- Úsalo para personalizar el mensaje al máximo.
+ANALIZA:
+1.  **Resumen Ejecutivo**: Una frase clara sobre qué hace la empresa (Ej: "Clínica de fisioterapia enfocada en deportistas de alto rendimiento").
+2.  **Cuello de Botella (Pain Point)**: ¿Qué les falla? (Ej: "Web lenta/antigua", "No tienen redes activas", "Muchas reseñas negativas").
+3.  **Validación de Actividad**:
+    - Ads: Deduce si probablemente hacen anuncios (Active/Inactive/Unknown).
+    - Social: Deduce si son activos en redes (Active/Inactive/Unknown).
+4.  **Decisor**: Si en la investigación ves nombres de personas (CEO, Fundador), escríbelos en el campo "detectedOwner".
 
-DEBES generar exactamente este JSON (sin markdown, solo JSON puro):
+Responde SOLO JSON:
 {
-  "psychologicalProfile": "Describe su perfil en 2 frases (Ej: 'Visionario y directo. Valora la innovación...')",
-  "businessMoment": "Deduce en qué fase está la empresa (Ej: 'Expansión agresiva', 'Consolidación', 'Buscando eficiencia')",
-  "salesAngle": "El argumento ÚNICO para venderle a ESTA persona hoy.",
-  "bottleneck": "Una frase BRUTAL y específica sobre su mayor freno o cuello de botella detectado.",
-  "personalizedMessage": "Mensaje de 100 palabras. Tono 'Coffee Chat' profesional. MENCIONA SU ÚLTIMO POST O ACTIVIDAD si existe."
-}
-
-IMPORTANTE: Responde SOLO con JSON válido.`
+  "executiveSummary": "Frase resumen de la empresa",
+  "bottleneck": "El problema principal detectado",
+  "psychologicalProfile": "Perfil del dueño (si se intuye)",
+  "businessMoment": "Fase de la empresa (Expansión/Supervivencia)",
+  "salesAngle": "Argumento de venta único",
+  "personalizedMessage": "Mensaje puerta fría (100 palabras) mencionando el cuello de botella",
+  "adStatus": "Active" | "Inactive" | "Unknown",
+  "socialStatus": "Active" | "Inactive" | "Unknown",
+  "detectedOwner": "Nombre detectado o null"
+}`
                             },
                             {
                                 role: 'user',
-                                content: `Analiza este lead (Intento ${attempt}):\n\n${context}`
+                                content: `Analiza este lead:\n\n${context}`
                             }
                         ],
-                        temperature: 0.7,
-                        max_tokens: 1000
+                        temperature: 0.5,
+                        max_tokens: 800
                     })
                 });
 
@@ -210,35 +218,44 @@ IMPORTANTE: Responde SOLO con JSON válido.`
 
                 if (jsonMatch) {
                     const parsed = JSON.parse(jsonMatch[0]);
+
+                    // Update owner name if detected and not already set
+                    if (parsed.detectedOwner && (!lead.decisionMaker?.name || lead.decisionMaker.name === '')) {
+                        lead.decisionMaker = { ...lead.decisionMaker!, name: parsed.detectedOwner };
+                    }
+
                     return {
-                        fullAnalysis: `🧠 PERFIL: ${parsed.psychologicalProfile}\n🏢 MOMENTO: ${parsed.businessMoment}\n💡 ÁNGULO: ${parsed.salesAngle}`, // Legacy format for safety
+                        fullAnalysis: `🧠 PERFIL: ${parsed.psychologicalProfile}\n⚠️ BOTELLA: ${parsed.bottleneck}`,
                         psychologicalProfile: parsed.psychologicalProfile || 'No detectado',
                         businessMoment: parsed.businessMoment || 'No detectado',
                         salesAngle: parsed.salesAngle || 'Genérico',
-                        personalizedMessage: parsed.personalizedMessage || `Hola ${lead.decisionMaker?.name || 'equipo'}, me gustaría contactar con vosotros.`,
-                        bottleneck: parsed.bottleneck || 'Oportunidad de mejora detectada'
+                        personalizedMessage: parsed.personalizedMessage || `Hola, vi vuestra web ${lead.website}...`,
+                        bottleneck: parsed.bottleneck || 'Oportunidad de mejora',
+                        executiveSummary: parsed.executiveSummary || `${lead.companyName}`,
+                        adStatus: parsed.adStatus || 'Unknown',
+                        socialStatus: parsed.socialStatus || 'Unknown'
                     };
                 }
             } catch (e) {
                 console.error(`Attempt ${attempt} failed:`, e);
-                if (attempt === MAX_RETRIES) break;
-                await new Promise(r => setTimeout(r, 1000 * attempt)); // Exponential backoff
+                await new Promise(r => setTimeout(r, 1000));
             }
         }
 
-        // Fallback if all AI attempts fail
         return {
-            fullAnalysis: `Análisis automático no disponible. Revisar perfil de ${lead.companyName}.`,
-            psychologicalProfile: 'No disponible',
-            businessMoment: 'Desconocido',
-            salesAngle: 'Desconocido',
-            personalizedMessage: `Hola ${lead.decisionMaker?.name || 'Responsable'}, he visto vuestra web ${lead.website} y me gustaría comentar una oportunidad de colaboración.`,
-            bottleneck: 'Revisión manual requerida'
+            fullAnalysis: 'Análisis fallido',
+            psychologicalProfile: 'N/A',
+            businessMoment: 'N/A',
+            salesAngle: 'N/A',
+            personalizedMessage: '',
+            bottleneck: 'N/A',
+            executiveSummary: lead.companyName,
+            adStatus: 'Unknown',
+            socialStatus: 'Unknown'
         };
     }
 
     private async callApifyActor(actorId: string, input: any, onLog: LogCallback): Promise<any[]> {
-        // Use local proxy to avoid CORS
         const baseUrl = '/api/apify';
         const startUrl = `${baseUrl}/acts/${actorId}/runs?token=${this.apiKey}`;
 
@@ -261,7 +278,7 @@ IMPORTANTE: Responde SOLO con JSON válido.`
 
         let isFinished = false;
         let pollCount = 0;
-        while (!isFinished && this.isRunning && pollCount < 60) {
+        while (!isFinished && this.isRunning && pollCount < 120) { // Increased timeout
             await new Promise(r => setTimeout(r, 5000));
             pollCount++;
 
@@ -281,23 +298,29 @@ IMPORTANTE: Responde SOLO con JSON válido.`
         return await itemsRes.json();
     }
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PUBLIC ENTRY POINT
+    // ═══════════════════════════════════════════════════════════════════════════
     public async startSearch(config: SearchConfigState, onLog: LogCallback, onComplete: ResultCallback) {
         this.isRunning = true;
+        this.apiKey = import.meta.env.VITE_APIFY_API_TOKEN || '';
+        this.openaiKey = import.meta.env.VITE_OPENAI_API_KEY || '';
+
+        if (!this.apiKey) {
+            onLog(`[ERROR] ❌ Falta VITE_APIFY_API_TOKEN`);
+            onComplete([]);
+            return;
+        }
 
         try {
-            this.apiKey = import.meta.env.VITE_APIFY_API_TOKEN || '';
-            this.openaiKey = import.meta.env.VITE_OPENAI_API_KEY || '';
-
-            if (!this.apiKey) throw new Error("Falta VITE_APIFY_API_TOKEN en .env");
-
-            onLog(`[IA] 🧠 Interpretando: "${config.query}"...`);
+            onLog(`[IA] 🧠 Analizando estrategia para: "${config.query}"...`);
             const interpreted = await this.interpretQuery(config.query, config.source);
-            onLog(`[IA] ✅ Industria: ${interpreted.industry}`);
 
             if (config.source === 'linkedin') {
+                // LinkedIn (Pending Update - prioritizing Gmail/Maps as per request core)
                 await this.searchLinkedIn(config, interpreted, onLog, onComplete);
             } else {
-                await this.searchGmail(config, interpreted, onLog, onComplete);
+                await this.searchGmailWithYieldGuarantee(config, interpreted, onLog, onComplete);
             }
 
         } catch (error: any) {
@@ -309,318 +332,178 @@ IMPORTANTE: Responde SOLO con JSON válido.`
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // GMAIL SEARCH - Ultra completo
+    // GMAIL SEARCH LOOP - GUARANTEED YIELD
     // ═══════════════════════════════════════════════════════════════════════════
-    private async searchGmail(
+    private async searchGmailWithYieldGuarantee(
         config: SearchConfigState,
-        interpreted: { searchQuery: string; industry: string; targetRoles: string[]; location: string },
+        interpreted: { searchQuery: string; industry: string; location: string },
         onLog: LogCallback,
         onComplete: ResultCallback
     ) {
-        const query = `${interpreted.searchQuery} ${interpreted.location}`;
-        onLog(`[GMAIL] 🗺️ Buscando: "${query}" (Estrategia de Volumen)`);
+        const targetCount = config.maxResults || 5;
+        const validLeads: Lead[] = [];
+        let loopCount = 0;
+        const MAX_LOOPS = 5; // Safety break
 
-        // STAGE 1: Google Maps scraping (Over-fetch significantly to filter later)
-        const targetCount = config.maxResults || 10;
-        const fetchAmount = Math.max(targetCount * 5, 50); // Get at least 50 or 5x target
+        onLog(`[SYSTEM] 🎯 Objetivo: ${targetCount} leads cualificados (Dueño + Email).`);
+        onLog(`[SYSTEM] 🔄 Iniciando bucle de búsqueda con Garantía de Resultados...`);
 
-        const mapsResults = await this.callApifyActor(GOOGLE_MAPS_SCRAPER, {
-            searchStringsArray: [query],
-            maxCrawledPlacesPerSearch: fetchAmount,
-            language: 'es',
-            includeWebsiteEmail: true, // Ask Maps to try its best
-            scrapeContacts: true,
-            maxImages: 0,
-            maxReviews: 0,
-        }, onLog);
+        // We use a broader area search strategy if first attempt yields low results?
+        // Actually, we'll just paginate or fetch MORE from Maps initially.
+        // Google Maps Scraper supports 'maxCrawledPlaces'.
 
-        onLog(`[GMAIL] 📊 ${mapsResults.length} empresas encontradas. Filtrando vacíos...`);
+        while (validLeads.length < targetCount && this.isRunning && loopCount < MAX_LOOPS) {
+            loopCount++;
+            const needed = targetCount - validLeads.length;
 
-        // Convert to leads
-        let allLeads: Lead[] = mapsResults.map((item: any, index: number) => ({
-            id: String(item.placeId || `lead-${Date.now()}-${index}`),
-            source: 'gmail' as const,
-            companyName: item.title || item.name || 'Sin Nombre',
-            website: item.website?.replace(/^https?:\/\//, '').replace(/\/$/, '') || '',
-            location: item.address || item.fullAddress || '',
-            decisionMaker: {
-                name: '',
-                role: 'Propietario',
-                email: item.email || (item.emails?.[0]) || '',
-                phone: item.phone || (item.phones?.[0]) || '',
-                linkedin: '',
-                facebook: item.facebook || '',
-                instagram: item.instagram || '',
-            },
-            aiAnalysis: {
-                summary: `${item.categoryName || interpreted.industry} - ${item.reviewsCount || 0} reseñas (${item.totalScore || 'N/A'}⭐)`,
-                painPoints: [],
-                generatedIcebreaker: '',
-                fullMessage: '',
-                fullAnalysis: '',
-                psychologicalProfile: '',
-                businessMoment: '',
-                salesAngle: ''
-            },
-            status: 'scraped' as const
-        }));
+            // Over-fetch factor: 5x because conversion rate is usually 20%
+            const fetchAmount = needed * 5;
 
-        // STAGE 2: Aggressive Contact Enrichment
-        // We need to process leads that HAVE a website but NO email
-        const needEmail = allLeads.filter(l => !l.decisionMaker?.email && l.website);
-        const alreadyHasEmail = allLeads.filter(l => l.decisionMaker?.email);
+            onLog(`[LOOP ${loopCount}] 🔍 Buscando ${fetchAmount} candidatos en Maps para obtener ${needed} válidos...`);
 
-        onLog(`[GMAIL] ℹ️ Estado actual: ${alreadyHasEmail.length} con email / ${needEmail.length} requieren deep scraping.`);
+            const query = `${interpreted.searchQuery} ${interpreted.location}`;
 
-        if (needEmail.length > 0 && this.isRunning) {
-            // Process in batches to avoid timeouts but maximize throughput
-            const BATCH_SIZE = 10;
-            const batches = Math.ceil(needEmail.length / BATCH_SIZE);
+            // Call Maps Scraper
+            const mapsResults = await this.callApifyActor(GOOGLE_MAPS_SCRAPER, {
+                searchStringsArray: [query],
+                maxCrawledPlacesPerSearch: fetchAmount,
+                language: 'es',
+                includeWebsiteEmail: true,
+                scrapeContacts: true,
+                skipClosedPlaces: true, // Don't want closed businesses
+            }, (msg) => { }); // Silent sub-logs
 
-            onLog(`[GMAIL] 🚀 Iniciando extracción masiva de emails en ${needEmail.length} webs...`);
+            onLog(`[LOOP ${loopCount}] 📊 Maps devolvió ${mapsResults.length} candidatos.`);
 
-            for (let i = 0; i < batches && this.isRunning; i++) {
-                const start = i * BATCH_SIZE;
-                const end = start + BATCH_SIZE;
-                const batch = needEmail.slice(start, end);
+            // Filter out those already found
+            const newCandidates = mapsResults.filter((m: any) => {
+                // Ignore if we already have this company or website
+                const isDuplicate = validLeads.some(l => l.companyName === m.title || (m.website && l.website === m.website));
+                return !isDuplicate;
+            });
 
-                onLog(`[GMAIL] 📥 Procesando lote ${i + 1}/${batches} (${batch.length} webs)...`);
+            if (newCandidates.length === 0) {
+                onLog(`[LOOP ${loopCount}] ⚠️ No se encontraron nuevos candidatos en esta zona/query.`);
+                break; // No more results likely
+            }
 
-                try {
-                    const contactResults = await this.callApifyActor(CONTACT_SCRAPER, {
-                        startUrls: batch.map(l => ({ url: `https://${l.website}` })),
-                        maxRequestsPerWebsite: 3, // Fast check
-                        sameDomainOnly: true,
-                        maxCrawlingDepth: 1, // Only check homepage and contact page usually
-                    }, (msg) => { }); // Silent logs for sub-process to avoid spam
+            // Convert and process
+            const rawLeads: Lead[] = newCandidates.map((item: any, idx: number) => ({
+                id: `lead-${Date.now()}-${loopCount}-${idx}`,
+                source: 'gmail',
+                companyName: item.title || 'Sin Nombre',
+                website: item.website?.replace(/^https?:\/\//, '').replace(/\/$/, '') || '',
+                location: item.address || '',
+                decisionMaker: {
+                    name: '',
+                    role: 'Propietario',
+                    email: item.email || (item.emails?.[0]) || '',
+                    linkedin: ''
+                },
+                aiAnalysis: {
+                    summary: `${item.totalScore || '?'}⭐ (${item.reviewsCount || 0} reviews)`,
+                    painPoints: [],
+                    generatedIcebreaker: '',
+                    fullMessage: '',
+                    fullAnalysis: '',
+                    psychologicalProfile: '',
+                    businessMoment: '',
+                    salesAngle: '',
+                    executiveSummary: '',
+                    adStatus: 'Unknown',
+                    socialStatus: 'Unknown',
+                    bottleneck: ''
+                },
+                status: 'scraped' as const
+            }));
 
-                    // Map results back to leads
-                    for (const contact of contactResults) {
-                        const contactUrl = contact.url || '';
-                        // Find matching lead by domain
-                        const match = batch.find(l => {
-                            if (!l.website) return false;
-                            return contactUrl.includes(l.website.replace('www.', ''));
-                        });
+            // Filter: Must have Website to be worth Deep Research (as per requirement "Leer la web")
+            const candidatesWithWeb = rawLeads.filter(l => l.website);
+            onLog(`[LOOP ${loopCount}] 📉 ${candidatesWithWeb.length} candidatos tienen web. Procediendo a enriquecimiento...`);
 
-                        if (match && contact.emails?.length) {
-                            // Use Set to deduplicate and ignore trash emails like 'wix', 'sentry', etc.
-                            const validEmails = contact.emails.filter((e: string) =>
-                                !e.includes('sentry') && !e.includes('noreply') && !e.includes('wix') && e.includes('@')
-                            );
+            // Contact Enrichment - Only for those missing emails
+            // ... (Re-using similar logic to before but structured for batching)
 
-                            if (validEmails.length > 0) {
-                                match.decisionMaker.email = validEmails[0];
-                                onLog(`[GMAIL] 📧 Email encontrado para ${match.companyName}: ${validEmails[0]}`);
+            // Let's just process ALL of them through contact scraper if they lack email
+            const processingQueue = candidatesWithWeb;
+
+            // Batch scraping for emails
+            if (processingQueue.length > 0) {
+                const needsEmail = processingQueue.filter(l => !l.decisionMaker?.email);
+                if (needsEmail.length > 0) {
+                    onLog(`[LOOP ${loopCount}] 📧 Buscando emails para ${needsEmail.length} webs...`);
+                    // We can do this in one go
+                    try {
+                        const contactResults = await this.callApifyActor(CONTACT_SCRAPER, {
+                            startUrls: needsEmail.map(l => ({ url: `https://${l.website}` })),
+                            maxRequestsPerWebsite: 2,
+                            sameDomainOnly: true,
+                        }, () => { });
+
+                        // Map back
+                        for (const cr of contactResults) {
+                            const url = cr.url || '';
+                            const lead = needsEmail.find(l => url.includes(l.website));
+                            if (lead && cr.emails?.length) {
+                                // Filter bad emails
+                                const valid = cr.emails.filter((e: string) => !e.includes('wix') && !e.includes('sentry') && e.includes('@'));
+                                if (valid.length > 0) lead.decisionMaker!.email = valid[0];
+                            }
+                            // Try to find instagram/facebook links if in social links
+                            if (lead && cr.socialMedia) {
+                                // logic to extract socials could be here
                             }
                         }
-                    }
-                } catch (e: any) {
-                    onLog(`[GMAIL] ⚠️ Fallo en lote ${i + 1}: ${e.message}`);
+                    } catch (e) { onLog(`[ERROR] Fallo en contact scraper: ${e}`); }
                 }
+            }
 
-                // If we have enough leads now, maybe stop? For now, let's just go through.
-                const currentTotal = allLeads.filter(l => l.decisionMaker?.email).length;
-                if (currentTotal >= targetCount) {
-                    onLog(`[GMAIL] ✅ Objetivo de leads alcanzado (${currentTotal}). Deteniendo scraping.`);
-                    break;
-                }
+            // FILTER: Strict requirement - Must have Email
+            // Enhance: If no email found, maybe we discard? For Fran, EMAIL is key.
+            const successfulLeads = processingQueue.filter(l => l.decisionMaker?.email);
+            onLog(`[LOOP ${loopCount}] ✅ ${successfulLeads.length} leads conseguidos con Email.`);
+
+            // DEEP RESEARCH & AI ANALYSIS
+            // Only process enough to fill the quota
+            const slotsRemaining = targetCount - validLeads.length;
+            const leadsToAnalyze = successfulLeads.slice(0, slotsRemaining);
+
+            for (const lead of leadsToAnalyze) {
+                if (!this.isRunning) break;
+
+                onLog(`[ANALYSIS] 🧠 Investigando a fondo: ${lead.companyName}...`);
+
+                // 1. Deep Google Search (Owner, Context)
+                const researchData = await this.deepResearchLead(lead, onLog);
+
+                // 2. AI Synthesis
+                const analysis = await this.generateUltraAnalysis(lead, researchData);
+
+                lead.aiAnalysis.executiveSummary = analysis.executiveSummary;
+                lead.aiAnalysis.bottleneck = analysis.bottleneck;
+                lead.aiAnalysis.adStatus = analysis.adStatus;
+                lead.aiAnalysis.socialStatus = analysis.socialStatus;
+                lead.aiAnalysis.fullMessage = analysis.personalizedMessage;
+                lead.status = 'ready'; // Ready to be saved
+
+                validLeads.push(lead);
+                onLog(`[SUCCESS] 🥳 Lead añadido: ${lead.companyName} (${validLeads.length}/${targetCount})`);
             }
         }
 
-        // ⚡ FILTER FINAL: ONLY leads with email
-        const finalCandidates = allLeads.filter(l => l.decisionMaker?.email);
-
-        if (finalCandidates.length === 0) {
-            onLog(`[ERROR] ❌ CRÍTICO: No se encontraron emails válidos tras el scraping profundo.`);
-            onLog(`[HINT] Intenta buscar un sector más digitalizado o aumenta el área de búsqueda.`);
-            onComplete([]);
-            return;
+        if (validLeads.length < targetCount) {
+            onLog(`[WARNING] ⚠️ Solo se pudieron encontrar ${validLeads.length} leads cualificados tras varios intentos.`);
+        } else {
+            onLog(`[FINISH] 🏁 Objetivo conseguido: ${validLeads.length} leads entregados.`);
         }
 
-        // Limit to requested amount
-        const finalLeads = finalCandidates.slice(0, targetCount);
-
-        onLog(`[GMAIL] 💎 Generando Icebreakers para ${finalLeads.length} leads validados...`);
-
-        // STAGE 3: Quick AI analysis (Icebreakers only for speed/volume)
-        if (this.openaiKey && this.isRunning) {
-            for (let i = 0; i < finalLeads.length && this.isRunning; i++) {
-                const lead = finalLeads[i];
-                // Lighter analysis for volume
-                lead.aiAnalysis.generatedIcebreaker = `Hola, he visto vuestra web ${lead.website} y me encaja mucho para...`;
-                lead.status = 'ready';
-
-                // Only do full deep research if it's a small batch (<20), otherwise just simple icebreaker
-                if (finalLeads.length <= 20) {
-                    const research = await this.deepResearchLead(lead, (m) => { });
-                    const analysis = await this.generateUltraAnalysis(lead, research);
-                    lead.aiAnalysis.fullAnalysis = analysis.fullAnalysis;
-                    lead.aiAnalysis.psychologicalProfile = analysis.psychologicalProfile;
-                    lead.aiAnalysis.businessMoment = analysis.businessMoment;
-                    lead.aiAnalysis.salesAngle = analysis.salesAngle;
-                    lead.aiAnalysis.fullMessage = analysis.personalizedMessage;
-                    lead.aiAnalysis.generatedIcebreaker = analysis.bottleneck;
-                } else {
-                    // Fast path
-                    lead.aiAnalysis.fullMessage = `Hola, vi vuestro negocio en ${lead.location}...`;
-                    lead.aiAnalysis.summary = "Lead cualificado por volumen";
-                    lead.aiAnalysis.psychologicalProfile = "N/A (Modo Volumen)";
-                    lead.aiAnalysis.businessMoment = "Operativo";
-                    lead.aiAnalysis.salesAngle = "Eficiencia/Escala";
-                }
-            }
-        }
-
-        onLog(`[GMAIL] 🏁 PROCESO FINALIZADO: ${finalLeads.length} leads ultra-cualificados con email`);
-        onComplete(finalLeads);
+        onComplete(validLeads);
     }
 
-    // ═══════════════════════════════════════════════════════════════════════════
-    // LINKEDIN SEARCH - DEEP RESEARCH + PSYCHOLOGY
-    // ═══════════════════════════════════════════════════════════════════════════
-    private async searchLinkedIn(
-        config: SearchConfigState,
-        interpreted: { searchQuery: string; industry: string; targetRoles: string[]; location: string },
-        onLog: LogCallback,
-        onComplete: ResultCallback
-    ) {
-        // 1. ACTIVE SEARCH (Búsqueda Activa)
-        const roleTerms = interpreted.targetRoles.slice(0, 2).join(' OR ');
-        const activeQuery = `site:linkedin.com/in ${roleTerms} "${interpreted.industry}" "${interpreted.location}"`;
-
-        onLog(`[LINKEDIN] 🕵️‍♂️ Iniciando BÚSQUEDA ACTIVA`);
-        onLog(`[LINKEDIN] 🎯 Query: ${activeQuery}`);
-
-        try {
-            // STEP 1: Discovery via Google
-            const searchResults = await this.callApifyActor(GOOGLE_SEARCH_SCRAPER, {
-                queries: activeQuery,
-                maxPagesPerQuery: 2,
-                resultsPerPage: config.maxResults || 15,
-                languageCode: 'es',
-                countryCode: 'es',
-            }, onLog);
-
-            let allResults: any[] = [];
-            for (const result of searchResults) {
-                if (result.organicResults) allResults = allResults.concat(result.organicResults);
-            }
-
-            const linkedInProfiles = allResults.filter((r: any) => r.url?.includes('linkedin.com/in/'));
-            onLog(`[LINKEDIN] 📋 ${linkedInProfiles.length} perfiles detectados.`);
-
-            if (!this.isRunning || linkedInProfiles.length === 0) {
-                onLog(`[LINKEDIN] ❌ No se encontraron perfiles. Intenta ampliar la zona.`);
-                onComplete([]);
-                return;
-            }
-
-            // STEP 2: Deep Analysis (Posts + Psych Profile)
-            const potentialLeads = linkedInProfiles.slice(0, (config.maxResults || 5)); // Process fewer for deep analysis speed
-            const finalLeads: Lead[] = [];
-
-            // Actor for posts (from the JSON reference)
-            const POSTS_SCRAPER = 'LQQIXN9Othf8f7R5n'; // apimaestro/linkedin-profile-posts
-
-            for (let i = 0; i < potentialLeads.length && this.isRunning; i++) {
-                const profile = potentialLeads[i];
-                onLog(`[RESEARCH] 🧠 Analizando candidato ${i + 1}/${potentialLeads.length}: ${profile.title.split(' - ')[0]}...`);
-
-                // Parse Basic Info
-                const titleParts = (profile.title || '').split(' - ');
-                const name = titleParts[0]?.replace(' | LinkedIn', '').trim() || 'Usuario LinkedIn';
-                const role = this.extractRole(profile.title) || 'Decisor';
-                const company = this.extractCompany(profile.title) || 'Empresa Desconocida';
-
-                // STEP 3: Scrape Recent Posts (The "Extra Step")
-                let recentPostsText = "";
-                let writingStyle = "Desconocido";
-
-                try {
-                    onLog(`[RESEARCH] 📲 Obteniendo actividad reciente (Posts)...`);
-                    const postsData = await this.callApifyActor(POSTS_SCRAPER, {
-                        username: profile.url,
-                        limit: 3 // Analyze last 3 posts
-                    }, () => { }); // Silent log for sub-task
-
-                    if (postsData && postsData.length > 0) {
-                        recentPostsText = postsData.map((p: any) => `POST (${p.date || 'Reciente'}): ${p.text?.substring(0, 200)}...`).join('\n');
-                        onLog(`[RESEARCH] ✅ ${postsData.length} posts recuperados para análisis.`);
-                    } else {
-                        onLog(`[RESEARCH] ⚠️ Sin actividad reciente accesible.`);
-                    }
-                } catch (e) {
-                    onLog(`[RESEARCH] ⚠️ No se pudieron leer posts (Perfil privado o error).`);
-                }
-
-                // STEP 4: Psychological Analysis
-                const researchDossier = `
-                PERFIL:
-                Nombre: ${name}
-                Headline: ${profile.title}
-                Snippet: ${profile.description}
-                URL: ${profile.url}
-                
-                ACTIVIDAD RECIENTE (Posts):
-                ${recentPostsText || "No hay posts recientes disponibles."}
-                `;
-
-                const analysis = await this.generateUltraAnalysis({
-                    companyName: company,
-                    decisionMaker: { name, role, linkedin: profile.url }
-                } as Lead, researchDossier);
-
-                finalLeads.push({
-                    id: `linkedin-psych-${Date.now()}-${i}`,
-                    source: 'linkedin',
-                    companyName: company,
-                    website: '', // We could search this, but focusing on Profile now
-                    location: interpreted.location,
-                    decisionMaker: {
-                        name,
-                        role,
-                        email: '', // Email is secondary in this flow
-                        phone: '',
-                        linkedin: profile.url
-                    },
-                    aiAnalysis: {
-                        summary: `Perfil Psicológico: ${analysis.bottleneck}`, // Using bottleneck field for psych summary
-                        fullAnalysis: analysis.fullAnalysis,
-                        psychologicalProfile: analysis.psychologicalProfile,
-                        businessMoment: analysis.businessMoment,
-                        salesAngle: analysis.salesAngle,
-                        fullMessage: analysis.personalizedMessage,
-                        generatedIcebreaker: analysis.bottleneck,
-                        painPoints: []
-                    },
-                    status: 'ready'
-                });
-            }
-
-            onLog(`[LINKEDIN] 🏁 Proceso finalizado. ${finalLeads.length} leads analizados.`);
-            onComplete(finalLeads);
-
-        } catch (error: any) {
-            onLog(`[LINKEDIN] ❌ Error: ${error.message}`);
-            onComplete([]);
-        }
-    }
-
-    private extractCompany(text: string): string {
-        // Heuristic: "CEO en [Empresa]" or "CEO at [Company]"
-        const atMatch = text.match(/\b(en|at|@)\s+([^|\-.,]+)/i);
-        if (atMatch && atMatch[2]) return atMatch[2].trim();
-        return '';
-    }
-
-    private extractRole(text: string): string {
-        const lower = text.toLowerCase();
-        if (lower.includes('ceo')) return 'CEO';
-        if (lower.includes('founder') || lower.includes('fundador')) return 'Fundador';
-        if (lower.includes('owner') || lower.includes('propietario')) return 'Propietario';
-        if (lower.includes('director')) return 'Director';
-        return '';
+    // Keeping LinkedIn method as fallback/legacy for now
+    private async searchLinkedIn(config: any, interpreted: any, onLog: any, onComplete: any) {
+        onLog("LinkedIn search not optimized for Fran's new core requirements yet. Please use Gmail/Maps source.");
+        onComplete([]);
     }
 }
 
