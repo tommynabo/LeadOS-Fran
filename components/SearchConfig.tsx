@@ -15,8 +15,8 @@ export function SearchConfig({ config, onChange, onSearch, onStop, isSearching }
   const [scheduledTime, setScheduledTime] = useState('09:00');
   const [autoPilotTarget, setAutoPilotTarget] = useState(25);
 
-  // Hardcoded goal text as per screenshot instruction
-  const MANUAL_GOAL_TEXT = "Objetivo: Mujeres directivas/gerentes, +40 años, buscando reinvención, marca personal, autoras/speakers";
+  // Target for Fran: Health & Fitness Sector
+  const MANUAL_GOAL_TEXT = "Objetivo: Dueños y Fundadores de Gimnasios, Centros de Fitness, Clínicas de Salud y Bienestar.";
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-[fadeIn_0.5s_ease-out]">
