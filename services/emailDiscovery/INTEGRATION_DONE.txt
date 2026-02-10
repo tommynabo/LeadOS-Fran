@@ -1,0 +1,56 @@
+=== INTEGRACIÓN EMAIL DISCOVERY - SECTOR ESPECÍFICO ===
+
+Tipo de búsqueda detectado: SECTOR-ESPECÍFICO
+
+Esto significa que tu proyecto busca empresas dentro de un sector/industria específico.
+
+PASOS PARA INTEGRAR:
+
+1. En tu servicio de búsqueda (SearchService, SectorSearchService, etc):
+
+   // al inicio del archivo:
+   import { 
+     emailDiscoveryPipeline,
+     type EmailDiscoveryResult,
+     type CompanyData 
+   } from '../emailDiscovery';
+
+2. Cuando obtengas resultados de búsqueda por sector, para cada empresa:
+
+   // Convertir data al formato esperado
+   const companyData: CompanyData = {
+     name: company.name,
+     website: company.website || `https://${company.domain}`,
+     industry: sectorName, // tu sector/industria
+     location: company.location || company.country
+   };
+
+   // Descubrir email
+   const emailResult = await emailDiscoveryPipeline.discoverOwnerEmail(
+     companyData,
+     (log) => {
+       console.log(`[${log.source}] ${log.message}`);
+     }
+   );
+
+   if (emailResult) {
+     company.ownerEmail = emailResult.email;
+     company.ownerName = emailResult.ownerName;
+     company.emailSource = emailResult.source;
+     company.emailConfidence = emailResult.confidence;
+   }
+
+3. Asegúrate de tener las credenciales en .env.local:
+   - VITE_GOOGLE_API_KEY
+   - VITE_GOOGLE_CUSTOM_SEARCH_ENGINE_ID  
+   - VITE_OPENAI_API_KEY
+   - VITE_APIFY_API_TOKEN
+   - (Y los IDs de actores de Apify)
+
+4. La pipeline se ejecutará automáticamente en cascada y entregará:
+   - email (string)
+   - ownerName (string)
+   - source (string - qué método encontró el email)
+   - confidence (0-1 - qué tan seguro estamos)
+
+=== LISTO PARA USAR ===
