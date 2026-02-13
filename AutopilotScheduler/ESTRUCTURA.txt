@@ -1,0 +1,241 @@
+╔═══════════════════════════════════════════════════════════════╗
+║                                                               ║
+║         🤖 AUTOPILOT SCHEDULER - CARPETA COMPLETA             ║
+║                                                               ║
+║           Sistema modular de Lead Generation Automation       ║
+║                                                               ║
+╚═══════════════════════════════════════════════════════════════╝
+
+
+📦 ESTRUCTURA DE CARPETAS
+════════════════════════════════════════════════════════════════
+
+AutopilotScheduler/
+│
+├─ 📋 README.md                     ← Descripción general
+├─ 📖 INSTRUCCIONES.md              ← Este archivo (instrucciones finales)
+├─ 📝 package.json                  ← Dependencias Node.js
+├─ 🔐 .gitignore                    ← No commitear credenciales
+│
+├─ 📁 config/                       ← TU CONFIGURACIÓN (EDITAR AQUÍ)
+│  ├─ credentials.json              ⚠️  API Keys (IMPORTANTE: no commitear)
+│  ├─ schedule-config.json          ⏰ Horarios de ejecución
+│  ├─ target-config.json            🎯 Clientes e ICP
+│  └─ autopilot-status.json         📊 Estado (se genera automáticamente)
+│
+├─ 🔧 scripts/                      ← UTILIDADES (NO EDITAR)
+│  ├─ install-autopilot.js          📥 Instalación inicial
+│  ├─ verify-autopilot.js           ✓  Validar configuración
+│  ├─ activate-schedule.js          ✅ Activar automático
+│  ├─ monitor-executions.js         👁️  Ver logs en vivo
+│  └─ rollback.js                   ⬅️  Desactivar autopilot
+│
+├─ ⚙️  n8n-workflows/               ← WORKFLOWS N8N (NO EDITAR)
+│  └─ linkedin-outreach-active.json 🚀 Workflow ACTIVADO
+│
+└─ 📚 docs/                         ← DOCUMENTACIÓN
+   ├─ QUICK-START.md               ⚡ Instalación 3 min
+   ├─ SETUP.md                     📖 Guía detallada
+   ├─ TROUBLESHOOTING.md           🔧 Solución problemas
+   └─ API-REFERENCE.md             🔌 Referencia técnica
+
+
+🚀 INSTALACIÓN RÁPIDA (3 COMANDOS)
+════════════════════════════════════════════════════════════════
+
+1. CONFIGURAR CREDENCIALES
+   └─ Edita: config/credentials.json
+      • APIFY_API_TOKEN (de https://console.apify.com)
+      • OPENAI_API_KEY (de https://platform.openai.com)
+      • GOOGLE_SHEETS_ID (de tu Google Sheet)
+
+2. INSTALAR
+   └─ node scripts/install-autopilot.js
+      ✅ Verifica estructura, credenciales, configuración
+
+3. ACTIVAR
+   └─ node scripts/activate-schedule.js
+      ✅ Se ejecutará automáticamente cada día a las 08:30
+
+
+📊 CÓMO FUNCIONA
+════════════════════════════════════════════════════════════════
+
+    ⏰ Schedule Trigger (8:30 AM)
+         ↓
+    📋 Lee Google Sheet (Perfiles/Empresas)
+         ↓
+    🔍 Scraper Apify (Extrae datos)
+         ↓
+    🛡️  Anti-duplicados (Filtra histórico)
+         ↓
+    🤖 OpenAI IA (Analiza leads)
+         ↓
+    💾 Almacena en Google Sheets
+         ↓
+    ✨ Completo → Repite mañana
+
+
+💡 COMANDOS ÚTILES
+════════════════════════════════════════════════════════════════
+
+$ node scripts/install-autopilot.js      → Setup inicial
+$ node scripts/verify-autopilot.js       → Validar todo está OK
+$ node scripts/activate-schedule.js      → Activar automático
+$ node scripts/monitor-executions.js     → Ver logs en vivo
+$ node scripts/rollback.js               → Desactivar autopilot
+
+O si tienes npm:
+$ npm run install                        → Setup
+$ npm run verify                         → Validar
+$ npm run activate                       → Activar
+$ npm run monitor                        → Logs
+
+
+🎯 PERSONALIZAR POR CLIENTE
+════════════════════════════════════════════════════════════════
+
+config/target-config.json tiene templates para:
+  • template_maribel  → Mujeres directivas 40+ (Marca personal)
+  • template_generic  → Búsqueda genérica B2B
+  • Crea el tuyo      → Añade nuevo template
+
+Para cambiar de cliente:
+  "active_target": "template_maribel"  ← Edita aquí
+
+
+📁 REPLICAR EN OTRO CLIENTE (Ej: Pablo)
+════════════════════════════════════════════════════════════════
+
+OPCIÓN 1 - Copiar completa:
+  $ cp -r AutopilotScheduler /tu/proyecto/pablo/
+  $ cd /tu/proyecto/pablo/AutopilotScheduler
+  $ nano config/credentials.json       ← Tus keys
+  $ node scripts/install-autopilot.js
+
+OPCIÓN 2 - Misma carpeta, múltiples clientes:
+  1. Edita config/target-config.json
+  2. Añade nuevo template en "base_templates"
+  3. Cambia "active_target" al nuevo
+  4. Ejecuta: npm run activate
+
+
+✅ VERIFICACIÓN
+════════════════════════════════════════════════════════════════
+
+$ node scripts/verify-autopilot.js
+
+Debería mostrar:
+  ✅ APIFY_API_TOKEN - Configure
+  ✅ OPENAI_API_KEY - Configure
+  ✅ GOOGLE_SHEETS_ID - Configure
+  ✅ Schedule ACTIVO - 08:30 (Europe/Madrid)
+  ✨ TODO ESTÁ CORRECTAMENTE CONFIGURADO
+
+
+⚠️  COSAS IMPORTANTES
+════════════════════════════════════════════════════════════════
+
+1. NO COMMITEES config/credentials.json
+   └─ Contiene tus API Keys
+   └─ Ya está en .gitignore
+
+2. IMPORTA EL WORKFLOW EN N8N
+   └─ Abre N8N Dashboard
+   └─ Import → Selecciona n8n-workflows/linkedin-outreach-active.json
+   └─ Conecta credenciales manualmente
+
+3. DEJA N8N CORRIENDO 24/7
+   └─ El schedule se ejecuta solo si N8N está activo
+   └─ Usa Docker o servicio del sistema
+
+4. PERSONALIZA config/target-config.json
+   └─ Escoge template activo
+   └─ O crea uno nuevo para tu cliente
+
+
+🔒 SEGURIDAD
+════════════════════════════════════════════════════════════════
+
+✓ Credenciales en archivo separado (no en código)
+✓ .gitignore protege credentials.json
+✓ Cada cliente tiene su config independiente
+✓ Logs no contienen datos sensibles
+
+
+📊 MONITOREAR
+════════════════════════════════════════════════════════════════
+
+$ node scripts/monitor-executions.js
+
+Muestra:
+  • Últimas ejecuciones
+  • Leads generados
+  • Duplicados encontrados
+  • Errores (si hay)
+  • Próxima ejecución
+
+
+🆘 SI ALGO FALLA
+════════════════════════════════════════════════════════════════
+
+$ node scripts/verify-autopilot.js    → Diagnóstico
+
+Problemas comunes:
+  • Schedule no se ejecuta          → Ver docs/TROUBLESHOOTING.md #1
+  • Credenciales inválidas          → Ver docs/TROUBLESHOOTING.md #2
+  • Google Sheets no actualiza      → Ver docs/TROUBLESHOOTING.md #5
+  • Workflow no aparece en N8N      → Ver docs/TROUBLESHOOTING.md #9
+
+
+📚 DOCUMENTACIÓN COMPLETA
+════════════════════════════════════════════════════════════════
+
+QUICK-START.md          ⚡ 2 min      - Instalación básica
+SETUP.md                📖 15 min     - Guía paso a paso
+TROUBLESHOOTING.md      🔧 Referencias- Solución problemas
+API-REFERENCE.md        🔌 Técnico    - Config JSON detallada
+
+
+💬 FLUJO DE TRABAJO TÍPICO
+════════════════════════════════════════════════════════════════
+
+Día 1:
+  ✓ Copia carpeta
+  ✓ Edita credentials.json
+  ✓ Ejecuta install-autopilot.js
+  ✓ Ejecuta verify-autopilot.js
+  ✓ Importa workflow en N8N
+  ✓ Conecta credenciales en N8N
+
+Día 2:
+  ✓ Ejecuta activate-schedule.js
+  ✓ El autopilot se ejecuta a las 08:30
+  ✓ Mira Google Sheets para ver resultados
+
+Próximos días:
+  ✓ Monitorea con monitor-executions.js
+  ✓ Ajusta config si es necesario
+  ✓ Replica a otros clientes si quieres
+
+
+🎉 ESTÁS LISTO
+════════════════════════════════════════════════════════════════
+
+La carpeta AUTOPILOT SCHEDULER está completamente configurada
+y lista para copiar y pegar en otros sistemas de lead generation.
+
+Úsalo en:
+  • LeadOS - Maribel (original)
+  • LeadOS - Pablo (copia)
+  • LeadOS - Diego (copia)
+  • Tus sistemas personalizados
+
+Todo vía JSON, sin tocar código. ¡Muy simple!
+
+
+═══════════════════════════════════════════════════════════════
+  Versión: 1.0.0
+  Status: ✅ PRODUCCIÓN READY
+  Última actualización: 12 Febrero 2026
+═══════════════════════════════════════════════════════════════

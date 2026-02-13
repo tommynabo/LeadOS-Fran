@@ -10,6 +10,7 @@ import { HistoryModal } from './components/HistoryModal';
 import { Lead, SearchConfigState, PageView, SearchSession } from './lib/types';
 import { PROJECT_CONFIG } from './config/project';
 import { searchService } from './services/search/SearchService';
+import { autopilotService } from './services/autopilot/AutopilotService';
 import { supabase } from './lib/supabase';
 
 function App() {
@@ -37,6 +38,11 @@ function App() {
   // History State
   const [history, setHistory] = useState<SearchSession[]>([]);
   const [selectedHistorySession, setSelectedHistorySession] = useState<SearchSession | null>(null);
+
+  // Autopilot State
+  const [autopilotEnabled, setAutopilotEnabled] = useState(autopilotService.getConfig().enabled);
+  const [autopilotTime, setAutopilotTime] = useState(autopilotService.getConfig().scheduledTime);
+  const [autopilotQuantity, setAutopilotQuantity] = useState(autopilotService.getConfig().leadsQuantity);
 
   // Sound Effect
   const playGlassSound = () => {
@@ -75,8 +81,12 @@ function App() {
       }
     });
 
+    // Initialize autopilot monitoring
+    autopilotService.initialize();
+
     return () => {
       searchService.stop();
+      autopilotService.destroy();
     };
   }, []);
 
@@ -219,6 +229,88 @@ function App() {
     searchService.stop();
     setIsSearching(false);
     addLog('[SYSTEM] 🛑 Búsqueda detenida por el usuario.');
+    autopilotService.markSearchComplete();
+  };
+
+  // --- Autopilot Logic ---
+
+  const executeAutopilotSearch = (quantity: number) => {
+    const autopilotConfig = { ...config, maxResults: quantity };
+
+    setIsSearching(true);
+    setTerminalVisible(true);
+    setTerminalExpanded(true);
+    setLogs([]);
+    setLeads([]);
+
+    searchService.startSearch(
+      autopilotConfig,
+      (message) => addLog(message),
+      async (results) => {
+        setIsSearching(false);
+        setLeads(results);
+
+        const newSession: SearchSession = {
+          id: Date.now().toString(),
+          date: new Date(),
+          query: autopilotConfig.query,
+          source: autopilotConfig.source,
+          resultsCount: results.length,
+          leads: results
+        };
+        setHistory(prev => [newSession, ...prev]);
+
+        if (userId) {
+          try {
+            const { error } = await supabase.from('search_results_fran').insert({
+              user_id: userId,
+              session_id: newSession.id,
+              platform: autopilotConfig.source,
+              query: autopilotConfig.query,
+              lead_data: results as any,
+              status: 'autopilot'
+            });
+            if (error) console.error('DB Error:', error);
+            else addLog('[AUTOPILOT] ✅ Resultados del piloto automático guardados en la nube.');
+          } catch (err) {
+            console.error('Failed to save autopilot results to DB', err);
+          }
+        }
+
+        autopilotService.markSearchComplete();
+        playGlassSound();
+        setTimeout(() => setTerminalExpanded(false), 1500);
+      }
+    );
+  };
+
+  useEffect(() => {
+    autopilotService.setCallbacks(executeAutopilotSearch, addLog);
+  }, [userId, config]);
+
+  const handleAutopilotToggle = (enabled: boolean) => {
+    setAutopilotEnabled(enabled);
+    if (enabled) {
+      autopilotService.enable(autopilotTime, autopilotQuantity);
+    } else {
+      autopilotService.disable();
+    }
+  };
+
+  const handleAutopilotTimeChange = (time: string) => {
+    setAutopilotTime(time);
+    autopilotService.updateTime(time);
+    if (autopilotEnabled) {
+      autopilotService.enable(time, autopilotQuantity);
+    }
+  };
+
+  const handleAutopilotQuantityChange = (quantity: number) => {
+    setAutopilotQuantity(quantity);
+    autopilotService.updateQuantity(quantity);
+    if (autopilotEnabled) {
+      autopilotService.enable(autopilotTime, quantity);
+    }
   };
 
   const handleConfigChange = (updates: Partial<SearchConfigState>) => {
@@ -263,6 +355,13 @@ function App() {
               onSearch={handleSearch}
               onStop={handleStop}
               isSearching={isSearching}
+              autopilotEnabled={autopilotEnabled}
+              autopilotTime={autopilotTime}
+              autopilotQuantity={autopilotQuantity}
+              onAutopilotToggle={handleAutopilotToggle}
+              onAutopilotTimeChange={handleAutopilotTimeChange}
+              onAutopilotQuantityChange={handleAutopilotQuantityChange}
+              autopilotRanToday={autopilotService.hasRunToday()}
             />
 
             <AgentTerminal

@@ -1,0 +1,105 @@
+{
+  "comment": "=== CONFIGURACIÓN DE TARGETS PARA BÚSQUEDA ===",
+  "comment2": "LeadOS - Fran: Gimnasios, Centros de Crossfit y Estudios de Yoga",
+
+  "base_templates": {
+    "template_fran": {
+      "client_id": "cli_fran_001",
+      "client_name": "LeadOS - Fran",
+      "description": "Gimnasios, centros de crossfit y estudios de yoga buscando más clientes",
+      
+      "icp": {
+        "age_min": 25,
+        "roles": ["Propietario", "Manager", "Director", "Gerente", "Entrenador Principal"],
+        "industries": ["Fitness", "Yoga", "Crossfit", "Wellness", "Deportes"],
+        "keywords": ["más clientes", "membresías", "inscripciones", "entrenamiento", "fitness"]
+      },
+
+      "locations": ["Madrid", "Barcelona", "Valencia"],
+      
+      "platforms": {
+        "linkedin": {
+          "enabled": true,
+          "search_mode": "fast",
+          "depth": 10,
+          "max_results": 20
+        },
+        "gmail": {
+          "enabled": true,
+          "search_mode": "fast",
+          "depth": 5,
+          "max_results": 30
+        }
+      },
+
+      "ai_analysis": {
+        "enabled": true,
+        "model": "gpt-4o-mini",
+        "focus_on": ["summary", "painPoints", "generatedIcebreaker"]
+      }
+    },
+
+    "template_generic": {
+      "client_id": "cli_generic_001",
+      "client_name": "Generic Lead Generation",
+      "description": "Búsqueda genérica B2B",
+      
+      "icp": {
+        "roles": ["CEO", "Founder", "Owner", "Director"],
+        "industries": ["Tech", "E-commerce", "Services"],
+        "keywords": []
+      },
+
+      "locations": ["Spain"],
+      
+      "platforms": {
+        "linkedin": {
+          "enabled": true,
+          "search_mode": "fast",
+          "depth": 5,
+          "max_results": 10
+        },
+        "gmail": {
+          "enabled": true,
+          "search_mode": "fast",
+          "depth": 3,
+          "max_results": 15
+        }
+      },
+
+      "ai_analysis": {
+        "enabled": true,
+        "model": "gpt-4o-mini",
+        "focus_on": ["summary", "painPoints"]
+      }
+    }
+  },
+
+  "active_target": "template_fran",
+  "comment3": "Cambiar 'active_target' si necesitas usar otro template"
+
+  "custom_targets": {
+    "example_client": {
+      "client_id": "cli_example_001",
+      "client_name": "Ejemplo Cliente",
+      "description": "Ajusta estos valores a tu cliente específico",
+      
+      "icp": {
+        "roles": ["YOUR_ROLE"],
+        "industries": ["YOUR_INDUSTRY"],
+        "keywords": ["keyword1", "keyword2"]
+      },
+
+      "locations": ["City1", "City2"],
+      
+      "platforms": {
+        "linkedin": {
+          "enabled": true,
+          "search_mode": "fast",
+          "depth": 5,
+          "max_results": 15
+        }
+      }
+    }
+  }
+}
