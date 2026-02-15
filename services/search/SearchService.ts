@@ -302,6 +302,53 @@ Responde SOLO JSON:
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
+    // LOAD ALL EXISTING LEADS (Zero-Duplicate Strategy)
+    // ═══════════════════════════════════════════════════════════════════════════
+    private async loadExistingLeads(): Promise<Set<string>> {
+        const bannedIdentifiers = new Set<string>();
+        
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) return bannedIdentifiers;
+
+            // Fetch ALL historical search results for this user
+            const { data } = await supabase
+                .from('search_results_fran')
+                .select('lead_data')
+                .eq('user_id', user.id)
+                .order('created_at', { ascending: false });
+
+            if (!data) return bannedIdentifiers;
+
+            // Extract and normalize all identifiers
+            for (const row of data) {
+                if (Array.isArray(row.lead_data)) {
+                    row.lead_data.forEach((lead: any) => {
+                        // Add normalized website
+                        if (lead.website) {
+                            const normalized = lead.website
+                                .toLowerCase()
+                                .replace(/^https?:\/\//, '')
+                                .replace(/^www\./, '')
+                                .replace(/\/$/, '');
+                            bannedIdentifiers.add(normalized);
+                        }
+                        // Add normalized company name
+                        if (lead.companyName && lead.companyName !== 'Sin Nombre') {
+                            const normalized = lead.companyName.toLowerCase().trim();
+                            bannedIdentifiers.add(normalized);
+                        }
+                    });
+                }
+            }
+        } catch (e) {
+            console.error('Error loading existing leads:', e);
+        }
+
+        return bannedIdentifiers;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
     // PUBLIC ENTRY POINT
     // ═══════════════════════════════════════════════════════════════════════════
     public async startSearch(config: SearchConfigState, onLog: LogCallback, onComplete: ResultCallback) {
@@ -319,10 +366,14 @@ Responde SOLO JSON:
             onLog(`[IA] 🧠 Analizando estrategia para: "${config.query}"...`);
             const interpreted = await this.interpretQuery(config.query, config.source);
 
+            // Load ALL existing leads (Zero-Duplicate Strategy)
+            const existingLeads = await this.loadExistingLeads();
+            onLog(`[SYSTEM] 🛡️ Sistema Anti-Duplicados activado. ${existingLeads.size} empresas en lista negra.`);
+
             if (config.source === 'linkedin') {
-                await this.searchLinkedIn(config, interpreted, onLog, onComplete);
+                await this.searchLinkedIn(config, interpreted, existingLeads, onLog, onComplete);
             } else {
-                await this.searchGmailWithYieldGuarantee(config, interpreted, onLog, onComplete);
+                await this.searchGmailWithYieldGuarantee(config, interpreted, existingLeads, onLog, onComplete);
             }
 
         } catch (error: any) {
@@ -339,6 +390,7 @@ Responde SOLO JSON:
     private async searchGmailWithYieldGuarantee(
         config: SearchConfigState,
         interpreted: { searchQuery: string; industry: string; location: string },
+        existingLeads: Set<string>,
         onLog: LogCallback,
         onComplete: ResultCallback
     ) {
@@ -349,34 +401,6 @@ Responde SOLO JSON:
 
         onLog(`[SYSTEM] 🎯 Objetivo: ${targetCount} leads cualificados (Dueño + Email).`);
         onLog(`[SYSTEM] 🔄 Iniciando bucle de búsqueda con Garantía de Resultados...`);
-
-        // 0. PRE-FLIGHT: Fetch ALL existing websites for this user to prevent duplicates
-        const existingWebsites = new Set<string>();
-        try {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (user) {
-                const { data } = await supabase
-                    .from('search_results_fran')
-                    .select('lead_data')
-                    .eq('user_id', user.id)
-                    .order('created_at', { ascending: false })
-                    .limit(50);
-
-                if (data) {
-                    data.forEach((row: any) => {
-                        if (Array.isArray(row.lead_data)) {
-                            row.lead_data.forEach((l: any) => {
-                                if (l.website) existingWebsites.add(l.website.toLowerCase().replace(/^https?:\/\//, '').replace(/\/$/, ''));
-                                if (l.companyName) existingWebsites.add(l.companyName.toLowerCase());
-                            });
-                        }
-                    });
-                }
-                onLog(`[SYSTEM] 🛡️ Sistema Anti-Duplicados activado. ${existingWebsites.size} empresas en lista negra.`);
-            }
-        } catch (e) {
-            console.error('Error fetching duplicates', e);
-        }
 
         while (validLeads.length < targetCount && this.isRunning && loopCount < MAX_LOOPS) {
             loopCount++;
@@ -406,12 +430,13 @@ Responde SOLO JSON:
                 // 1. Check local duplicates in this batch
                 const isLocalDuplicate = validLeads.some(l => l.companyName === m.title || (m.website && l.website === m.website));
 
-                // 2. Check GLOBAL duplicates (Supabase history)
-                const cleanWeb = m.website?.replace(/^https?:\/\//, '').replace(/\/$/, '').toLowerCase();
+                // 2. Check GLOBAL duplicates (All historical leads)
+                const cleanWeb = m.website?.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '').toLowerCase();
                 const cleanName = m.title?.toLowerCase();
-                const isGlobalDuplicate = existingWebsites.has(cleanWeb) || existingWebsites.has(cleanName);
+                const isGlobalDuplicate = (cleanWeb && existingLeads.has(cleanWeb)) || (cleanName && existingLeads.has(cleanName));
 
                 if (isGlobalDuplicate) {
+                    onLog(`[LOOP ${loopCount}] 🔄 Encontrado duplicado: ${m.title}, saltando...`);
                     return false;
                 }
 
@@ -587,6 +612,7 @@ Responde SOLO JSON:
     private async searchLinkedIn(
         config: SearchConfigState,
         interpreted: { searchQuery: string; industry: string; targetRoles: string[]; location: string },
+        existingLeads: Set<string>,
         onLog: LogCallback,
         onComplete: ResultCallback
     ) {
@@ -624,6 +650,13 @@ Responde SOLO JSON:
                     const name = parts[0] || 'Usuario LinkedIn';
                     const role = parts[1] || 'Cargo desconocido';
                     const company = parts[2]?.replace('| LinkedIn', '').trim() || 'Empresa desconocida';
+
+                    // Check for duplicates before adding
+                    const cleanCompany = company.toLowerCase();
+                    if (existingLeads.has(cleanCompany)) {
+                        onLog(`[LINKEDIN] 🔄 Encontrado duplicado: ${company}, saltando...`);
+                        continue;
+                    }
 
                     const lead: Lead = {
                         id: `li-${Date.now()}-${leads.length}`,

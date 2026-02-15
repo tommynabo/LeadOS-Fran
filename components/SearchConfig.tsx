@@ -8,9 +8,10 @@ interface SearchConfigProps {
   onSearch: () => void;
   onStop: () => void;
   isSearching: boolean;
+  onOpenCriteria?: () => void;
 }
 
-export function SearchConfig({ config, onChange, onSearch, onStop, isSearching }: SearchConfigProps) {
+export function SearchConfig({ config, onChange, onSearch, onStop, isSearching, onOpenCriteria }: SearchConfigProps) {
   const [autoPilotEnabled, setAutoPilotEnabled] = useState(false);
   const [scheduledTime, setScheduledTime] = useState('09:00');
   const [autoPilotTarget, setAutoPilotTarget] = useState(25);
@@ -98,7 +99,15 @@ export function SearchConfig({ config, onChange, onSearch, onStop, isSearching }
         </div>
 
         {/* Action Button */}
-        <div className="mt-6">
+        <div className="mt-6 space-y-3">
+          <button
+            onClick={onOpenCriteria}
+            disabled={isSearching}
+            className="w-full py-2.5 rounded-lg font-bold text-sm bg-slate-500/10 text-slate-300 border border-slate-500/20 hover:bg-slate-500/20 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            ✎ Criterio de Búsqueda
+          </button>
+          
           {isSearching ? (
             <button
               onClick={onStop}
