@@ -385,7 +385,7 @@ Responde SOLO JSON:
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // GMAIL SEARCH LOOP - GUARANTEED YIELD
+    // GMAIL SEARCH LOOP - SMART LOOP WITH PAGINATION
     // ═══════════════════════════════════════════════════════════════════════════
     private async searchGmailWithYieldGuarantee(
         config: SearchConfigState,
@@ -396,36 +396,49 @@ Responde SOLO JSON:
     ) {
         const targetCount = config.maxResults || 5;
         const validLeads: Lead[] = [];
-        let loopCount = 0;
-        const MAX_LOOPS = 5; // Safety break
+        let attempts = 0;
+        const MAX_ATTEMPTS = 10; // Safety break to prevent infinite loops
+        let totalScannedPreviously = 0; // Track how many raw results we've already processed
 
         onLog(`[SYSTEM] 🎯 Objetivo: ${targetCount} leads cualificados (Dueño + Email).`);
-        onLog(`[SYSTEM] 🔄 Iniciando bucle de búsqueda con Garantía de Resultados...`);
+        onLog(`[SYSTEM] 🔄 Iniciando Smart Loop con Paginación (x4)...`);
 
-        while (validLeads.length < targetCount && this.isRunning && loopCount < MAX_LOOPS) {
-            loopCount++;
+        // ═══════════════════════════════════════════════════════════════════════════
+        // SMART LOOP: Keep searching until target is reached or no more results
+        // ═══════════════════════════════════════════════════════════════════════════
+        while (validLeads.length < targetCount && this.isRunning && attempts < MAX_ATTEMPTS) {
+            attempts++;
             const needed = targetCount - validLeads.length;
 
-            // Over-fetch factor: INCREASED TO 10x for maximum yield guarantee
-            const fetchAmount = needed * 10;
+            // Smart Loop: Use x4 multiplier for batch size
+            const fetchAmount = needed * 4;
 
-            onLog(`[LOOP ${loopCount}] 🔍 Buscando ${fetchAmount} candidatos en Maps para obtener ${needed} válidos...`);
+            onLog(`[ATTEMPT ${attempts}] 🔄 Búsqueda: ${fetchAmount} candidatos (faltantes: ${needed})...`);
 
             const query = `${interpreted.searchQuery} ${interpreted.location}`;
 
-            // Call Maps Scraper
+            // Call Maps Scraper with smart pagination
+            // For Maps, we increase the total pool based on accumulated scans
+            const totalMapsToScan = fetchAmount + totalScannedPreviously;
+
             const mapsResults = await this.callApifyActor(GOOGLE_MAPS_SCRAPER, {
                 searchStringsArray: [query],
-                maxCrawledPlacesPerSearch: fetchAmount,
+                maxCrawledPlacesPerSearch: Math.min(totalMapsToScan, 1000), // Cap at 1000 per Apify limits
                 language: 'es',
                 includeWebsiteEmail: true,
                 scrapeContacts: true,
-                skipClosedPlaces: true, // Don't want closed businesses
+                skipClosedPlaces: true,
+                // Pagination-like behavior: offset results by using 'skipClosedPlaces' & filtering
             }, (msg) => { }); // Silent sub-logs
 
-            onLog(`[LOOP ${loopCount}] 📊 Maps devolvió ${mapsResults.length} candidatos.`);
+            if (mapsResults.length === 0) {
+                onLog(`[ATTEMPT ${attempts}] ⚠️ No se encontraron más candidatos en Maps. Finalizando...`);
+                break; // No more results available from source
+            }
 
-            // Filter out those already found
+            onLog(`[ATTEMPT ${attempts}] 📊 Maps devolvió ${mapsResults.length} candidatos (acumulados: ${totalScannedPreviously} de búsquedas anteriores)...`);
+
+            // Filter out those already found (duplicates)
             const newCandidates = mapsResults.filter((m: any) => {
                 // 1. Check local duplicates in this batch
                 const isLocalDuplicate = validLeads.some(l => l.companyName === m.title || (m.website && l.website === m.website));
@@ -436,21 +449,27 @@ Responde SOLO JSON:
                 const isGlobalDuplicate = (cleanWeb && existingLeads.has(cleanWeb)) || (cleanName && existingLeads.has(cleanName));
 
                 if (isGlobalDuplicate) {
-                    onLog(`[LOOP ${loopCount}] 🔄 Encontrado duplicado: ${m.title}, saltando...`);
+                    onLog(`[ATTEMPT ${attempts}] 🔄 Encontrado duplicado: ${m.title}, saltando...`);
                     return false;
                 }
 
                 return !isLocalDuplicate;
             });
 
+            // ✅ CRITICAL: Update pagination tracker
+            // totalScannedPreviously += the raw results count (some were duplicates, but we counted them)
+            totalScannedPreviously += mapsResults.length;
+
             if (newCandidates.length === 0) {
-                onLog(`[LOOP ${loopCount}] ⚠️ Todos los candidatos encontrados ya existen o están duplicados.`);
-                break;
+                onLog(`[ATTEMPT ${attempts}] ⚠️ Todos los candidatos encontrados ya existen o están duplicados. Sin resultados válidos nuevos.`);
+                break; // If no new non-duplicate candidates, stop
             }
+
+            onLog(`[ATTEMPT ${attempts}] ✨ ${newCandidates.length} candidatos NUEVOS después de deduplicación.`);
 
             // Convert and process
             const rawLeads: Lead[] = newCandidates.map((item: any, idx: number) => ({
-                id: `lead-${Date.now()}-${loopCount}-${idx}`,
+                id: `lead-${Date.now()}-${attempts}-${idx}`,
                 source: 'gmail',
                 companyName: item.title || 'Sin Nombre',
                 website: item.website?.replace(/^https?:\/\//, '').replace(/\/$/, '') || '',
@@ -480,7 +499,7 @@ Responde SOLO JSON:
 
             // Filter: Must have Website
             const candidatesWithWeb = rawLeads.filter(l => l.website);
-            onLog(`[LOOP ${loopCount}] 📉 ${candidatesWithWeb.length} candidatos tienen web. Procediendo a enriquecimiento...`);
+            onLog(`[ATTEMPT ${attempts}] 📉 ${candidatesWithWeb.length} candidatos tienen web. Procediendo a enriquecimiento...`);
 
             // ═══════════════════════════════════════════════════════════════════════════
             // STAGE 2.5: ADVANCED OWNER DISCOVERY (The "Sniper" Phase)
@@ -488,7 +507,7 @@ Responde SOLO JSON:
             const leadsToEnrich = candidatesWithWeb;
 
             if (leadsToEnrich.length > 0) {
-                onLog(`[LOOP ${loopCount}] 🕵️‍♂️ Iniciando Protocolo "Sniper" (Email Discovery) para ${leadsToEnrich.length} empresas...`);
+                onLog(`[ATTEMPT ${attempts}] 🕵️‍♂️ Iniciando Protocolo "Sniper" (Email Discovery) para ${leadsToEnrich.length} empresas...`);
 
                 const BATCH_SIZE = 5;
                 for (let i = 0; i < leadsToEnrich.length; i += BATCH_SIZE) {
@@ -540,7 +559,7 @@ Responde SOLO JSON:
             if (processingQueue.length > 0) {
                 const needsEmail = processingQueue;
                 if (needsEmail.length > 0) {
-                    onLog(`[LOOP ${loopCount}] 🕸️ Escaneando webs (Fallback) para ${needsEmail.length} empresas...`);
+                    onLog(`[ATTEMPT ${attempts}] 🕸️ Escaneando webs (Fallback) para ${needsEmail.length} empresas...`);
                     try {
                         const contactResults = await this.callApifyActor(CONTACT_SCRAPER, {
                             startUrls: needsEmail.map(l => ({ url: `https://${l.website}` })),
@@ -564,7 +583,7 @@ Responde SOLO JSON:
 
             // FILTER: Strict requirement - Must have Email
             const successfulLeads = leadsToEnrich.filter(l => l.decisionMaker?.email);
-            onLog(`[LOOP ${loopCount}] ✅ ${successfulLeads.length} leads conseguidos con Email.`);
+            onLog(`[ATTEMPT ${attempts}] ✅ ${successfulLeads.length} leads conseguidos con Email.`);
 
             // DEEP RESEARCH & AI ANALYSIS
             const slotsRemaining = targetCount - validLeads.length;
@@ -595,19 +614,19 @@ Responde SOLO JSON:
                 validLeads.push(lead);
                 onLog(`[SUCCESS] 🥳 Lead añadido: ${lead.companyName} (${validLeads.length}/${targetCount})`);
             }
-        }
+        } // End of Smart Loop
 
         if (validLeads.length < targetCount) {
-            onLog(`[WARNING] ⚠️ Solo se pudieron encontrar ${validLeads.length} leads cualificados tras varios intentos.`);
+            onLog(`[WARNING] ⚠️ Solo se pudieron encontrar ${validLeads.length}/${targetCount} leads tras ${attempts} intentos.`);
         } else {
-            onLog(`[FINISH] 🏁 Objetivo conseguido: ${validLeads.length} leads entregados.`);
+            onLog(`[FINISH] 🏁 Objetivo conseguido: ${validLeads.length} leads entregados en ${attempts} intentos.`);
         }
 
         onComplete(validLeads);
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // LINKEDIN SEARCH (Via Google X-Ray)
+    // LINKEDIN SEARCH (Via Google X-Ray) - SMART LOOP WITH PAGINATION
     // ═══════════════════════════════════════════════════════════════════════════
     private async searchLinkedIn(
         config: SearchConfigState,
@@ -616,33 +635,51 @@ Responde SOLO JSON:
         onLog: LogCallback,
         onComplete: ResultCallback
     ) {
-        onLog(`[LINKEDIN] 🚀 Iniciando búsqueda X-Ray en Google...`);
+        const targetCount = config.maxResults || 5;
+        const validLeads: Lead[] = [];
+        let attempts = 0;
+        const MAX_ATTEMPTS = 10;
+        let currentPage = 1; // Pagination tracker for Google Search
 
-        const queries = interpreted.targetRoles.map(role =>
-            `site:linkedin.com/in/ "${role}" "${interpreted.industry}" ${interpreted.location}`
-        );
+        onLog(`[LINKEDIN] 🚀 Iniciando búsqueda X-Ray con Smart Loop...`);
 
-        // Join first 2 queries to avoid too many requests, or just use the main one
-        const mainQuery = queries[0];
+        // Smart Loop for LinkedIn pagination
+        while (validLeads.length < targetCount && this.isRunning && attempts < MAX_ATTEMPTS) {
+            attempts++;
+            const needed = targetCount - validLeads.length;
+            const resultsToFetch = Math.min(needed * 4, 100); // x4 multiplier, but cap reasonably
 
-        onLog(`[LINKEDIN] 🔎 Query: ${mainQuery}`);
+            onLog(`[LINKEDIN-ATTEMPT ${attempts}] 🔄 Página ${currentPage}: buscando ${resultsToFetch} resultados...`);
 
-        try {
-            const results = await this.callApifyActor(GOOGLE_SEARCH_SCRAPER, {
-                queries: queries.slice(0, 2).join('\n'), // Use top 2 variations
-                resultsPerPage: config.maxResults + 5, // Fetch a bit more
-                countryCode: 'es',
-                languageCode: 'es',
-                maxPagesPerQuery: 1,
-            }, onLog);
+            const queries = interpreted.targetRoles.slice(0, 2).map(role =>
+                `site:linkedin.com/in/ "${role}" "${interpreted.industry}" ${interpreted.location}`
+            );
 
-            const leads: Lead[] = [];
+            try {
+                const results = await this.callApifyActor(GOOGLE_SEARCH_SCRAPER, {
+                    queries: queries.join('\n'),
+                    resultsPerPage: resultsToFetch,
+                    countryCode: 'es',
+                    languageCode: 'es',
+                    maxPagesPerQuery: currentPage, // Paginate through results
+                }, onLog);
 
-            for (const run of results) {
-                if (!run.organicResults) continue;
+                let pageResults: any[] = [];
+                for (const run of results) {
+                    if (!run.organicResults) continue;
+                    pageResults = pageResults.concat(run.organicResults);
+                }
 
-                for (const item of run.organicResults) {
-                    if (leads.length >= config.maxResults) break;
+                if (pageResults.length === 0) {
+                    onLog(`[LINKEDIN-ATTEMPT ${attempts}] ⚠️ No se encontraron más resultados en la página ${currentPage}.`);
+                    break; // No more pages
+                }
+
+                onLog(`[LINKEDIN-ATTEMPT ${attempts}] 📊 ${pageResults.length} resultados encontrados.`);
+
+                // Process results
+                for (const item of pageResults) {
+                    if (validLeads.length >= targetCount) break;
 
                     // Parse Title: "Nombre Apellido - Cargo - Empresa | LinkedIn"
                     const title = item.title;
@@ -654,19 +691,24 @@ Responde SOLO JSON:
                     // Check for duplicates before adding
                     const cleanCompany = company.toLowerCase();
                     if (existingLeads.has(cleanCompany)) {
-                        onLog(`[LINKEDIN] 🔄 Encontrado duplicado: ${company}, saltando...`);
+                        onLog(`[LINKEDIN-ATTEMPT ${attempts}] 🔄 Duplicado encontrado: ${company}`);
+                        continue;
+                    }
+
+                    // Check local duplicates
+                    if (validLeads.some(l => l.companyName === company)) {
                         continue;
                     }
 
                     const lead: Lead = {
-                        id: `li-${Date.now()}-${leads.length}`,
+                        id: `li-${Date.now()}-${validLeads.length}`,
                         source: 'linkedin',
                         companyName: company,
-                        website: '', // LinkedIn usually doesn't give website directly in snippet
+                        website: '',
                         decisionMaker: {
                             name: name,
                             role: role,
-                            email: '', // Hard to get email from X-Ray
+                            email: '',
                             linkedin: item.url
                         },
                         aiAnalysis: {
@@ -686,21 +728,21 @@ Responde SOLO JSON:
                         status: 'scraped'
                     };
 
-                    leads.push(lead);
+                    validLeads.push(lead);
+                    onLog(`[LINKEDIN] ✅ Lead ${validLeads.length}/${targetCount}: ${name} (${company})`);
                 }
+
+                // Move to next page for pagination
+                currentPage++;
+
+            } catch (e: any) {
+                onLog(`[ERROR] LinkedIn Search Failed (attempt ${attempts}): ${e.message}`);
+                break;
             }
-
-            onLog(`[LINKEDIN] ✅ Se encontraron ${leads.length} perfiles.`);
-
-            // Enrich with "Sniper" if we have company name
-            // ... (For now, just return what we have as per "Fast" mode)
-
-            onComplete(leads);
-
-        } catch (e: any) {
-            onLog(`[ERROR] LinkedIn Search Failed: ${e.message}`);
-            onComplete([]);
         }
+
+        onLog(`[LINKEDIN] 🏁 Búsqueda finalizada: ${validLeads.length}/${targetCount} leads encontrados en ${attempts} intentos.`);
+        onComplete(validLeads);
     }
 }
 
