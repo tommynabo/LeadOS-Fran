@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Play, Clock, Zap, Users, Mail, Linkedin } from 'lucide-react';
 import { SearchConfigState } from '../lib/types';
 
@@ -9,12 +9,30 @@ interface SearchConfigProps {
   onStop: () => void;
   isSearching: boolean;
   onOpenCriteria?: () => void;
+  autopilotEnabled: boolean;
+  autopilotTime: string;
+  autopilotQuantity: number;
+  onAutopilotToggle: (enabled: boolean) => void;
+  onAutopilotTimeChange: (time: string) => void;
+  onAutopilotQuantityChange: (quantity: number) => void;
+  autopilotRanToday: boolean;
 }
 
-export function SearchConfig({ config, onChange, onSearch, onStop, isSearching, onOpenCriteria }: SearchConfigProps) {
-  const [autoPilotEnabled, setAutoPilotEnabled] = useState(false);
-  const [scheduledTime, setScheduledTime] = useState('09:00');
-  const [autoPilotTarget, setAutoPilotTarget] = useState(25);
+export function SearchConfig({
+  config,
+  onChange,
+  onSearch,
+  onStop,
+  isSearching,
+  onOpenCriteria,
+  autopilotEnabled,
+  autopilotTime,
+  autopilotQuantity,
+  onAutopilotToggle,
+  onAutopilotTimeChange,
+  onAutopilotQuantityChange,
+  autopilotRanToday
+}: SearchConfigProps) {
 
   // Target for Fran: Health & Fitness Sector
   const MANUAL_GOAL_TEXT = "Objetivo: Dueños y Fundadores de Gimnasios, Centros de Fitness, Clínicas de Salud y Bienestar.";
@@ -107,7 +125,7 @@ export function SearchConfig({ config, onChange, onSearch, onStop, isSearching, 
           >
             ✎ Criterio de Búsqueda
           </button>
-          
+
           {isSearching ? (
             <button
               onClick={onStop}
@@ -132,7 +150,7 @@ export function SearchConfig({ config, onChange, onSearch, onStop, isSearching, 
       <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-6 shadow-xl relative overflow-hidden group flex flex-col justify-between">
         <div className="absolute top-0 right-0 p-4">
           {/* Status Dot */}
-          <div className={`w-3 h-3 rounded-full ${autoPilotEnabled ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' : 'bg-zinc-700'}`} />
+          <div className={`w-3 h-3 rounded-full ${autopilotEnabled ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' : 'bg-zinc-700'}`} />
         </div>
 
         <div>
@@ -149,13 +167,13 @@ export function SearchConfig({ config, onChange, onSearch, onStop, isSearching, 
           <div className="flex flex-col items-center justify-center space-y-4 py-2">
             {/* Clock Display */}
             <div className="text-5xl font-bold text-zinc-200 tracking-tighter font-mono group-hover:text-white transition-colors">
-              {scheduledTime}
+              {autopilotTime}
             </div>
 
             <input
               type="time"
-              value={scheduledTime}
-              onChange={(e) => setScheduledTime(e.target.value)}
+              value={autopilotTime}
+              onChange={(e) => onAutopilotTimeChange(e.target.value)}
               className="bg-transparent text-xs font-bold text-zinc-500 uppercase tracking-widest border-b border-zinc-700 hover:text-zinc-300 hover:border-zinc-500 focus:outline-none transition-colors text-center cursor-pointer w-24"
             />
 
@@ -163,7 +181,7 @@ export function SearchConfig({ config, onChange, onSearch, onStop, isSearching, 
             <div className="w-full bg-zinc-950/30 rounded-lg p-3 mt-4 border border-zinc-800/50">
               <div className="flex justify-between items-center text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-2">
                 <span>Leads Diarios</span>
-                <span>{autoPilotTarget}</span>
+                <span>{autopilotQuantity}</span>
               </div>
               <div className="flex items-center gap-3">
                 <Users className="w-3 h-3 text-zinc-600" />
@@ -171,8 +189,8 @@ export function SearchConfig({ config, onChange, onSearch, onStop, isSearching, 
                   type="range"
                   min="1"
                   max="50"
-                  value={autoPilotTarget}
-                  onChange={(e) => setAutoPilotTarget(parseInt(e.target.value))}
+                  value={autopilotQuantity}
+                  onChange={(e) => onAutopilotQuantityChange(parseInt(e.target.value))}
                   className="flex-1 h-1.5 bg-zinc-800 rounded-full appearance-none cursor-pointer accent-green-500"
                 />
               </div>
@@ -181,13 +199,15 @@ export function SearchConfig({ config, onChange, onSearch, onStop, isSearching, 
         </div>
 
         <div className="mt-8 pt-6 border-t border-zinc-800 flex items-center justify-between">
-          <span className="text-sm font-medium text-zinc-300">Estado del Sistema</span>
+          <span className="text-sm font-medium text-zinc-300">
+            {autopilotRanToday ? 'Ejecutado hoy' : 'Estado del Sistema'}
+          </span>
 
           <button
-            onClick={() => setAutoPilotEnabled(!autoPilotEnabled)}
-            className={`w-12 h-6 rounded-full p-1 transition-colors duration-300 ${autoPilotEnabled ? 'bg-white' : 'bg-zinc-700'}`}
+            onClick={() => onAutopilotToggle(!autopilotEnabled)}
+            className={`w-12 h-6 rounded-full p-1 transition-colors duration-300 ${autopilotEnabled ? 'bg-white' : 'bg-zinc-700'}`}
           >
-            <div className={`w-4 h-4 rounded-full bg-black shadow-sm transform transition-transform duration-300 ${autoPilotEnabled ? 'translate-x-6' : 'translate-x-0'}`} />
+            <div className={`w-4 h-4 rounded-full bg-black shadow-sm transform transition-transform duration-300 ${autopilotEnabled ? 'translate-x-6' : 'translate-x-0'}`} />
           </button>
         </div>
       </div>
