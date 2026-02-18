@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { X } from 'lucide-react';
 import { AdvancedSearchForm } from './SearchFilter/AdvancedSearchForm';
+import { AdvancedFilter } from '../lib/types';
 
 interface SearchCriteriaModalProps {
   isOpen: boolean;
   onClose: () => void;
   currentQuery: string;
-  onSave: (newQuery: string) => void;
+  onSave: (newQuery: string, filters?: AdvancedFilter) => void;
 }
 
 export function SearchCriteriaModal({
@@ -16,22 +17,25 @@ export function SearchCriteriaModal({
   onSave
 }: SearchCriteriaModalProps) {
   const [query, setQuery] = useState(currentQuery);
+  const [filters, setFilters] = useState<AdvancedFilter | undefined>(undefined);
   const [activeTab, setActiveTab] = useState<'simple' | 'advanced'>('advanced');
 
   const handleSave = () => {
     if (query.trim()) {
-      onSave(query);
+      onSave(query, filters);
       onClose();
     }
   };
 
   const handleCancel = () => {
     setQuery(currentQuery);
+    setFilters(undefined);
     onClose();
   };
 
-  const handleAdvancedApply = (newQuery: string) => {
-    setQuery(newQuery);
+  const handleAdvancedApply = (data: { query: string; filters: AdvancedFilter }) => {
+    setQuery(data.query);
+    setFilters(data.filters);
     setActiveTab('simple');
   };
 

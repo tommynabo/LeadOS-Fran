@@ -50,11 +50,20 @@ export interface Lead {
   status: 'scraped' | 'enriched' | 'ready' | 'contacted' | 'replied';
 }
 
+export interface AdvancedFilter {
+  locations: string[];
+  jobTitles: string[];
+  companySizes: string[];
+  industries: string[];
+  keywords: string[];
+}
+
 export interface SearchConfigState {
   query: string;
   source: PlatformSource;
   mode: SearchMode;
   maxResults: number;
+  advancedFilters?: AdvancedFilter;
 }
 
 export interface SearchSession {

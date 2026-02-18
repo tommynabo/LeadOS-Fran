@@ -75,6 +75,75 @@ Responde SOLO con JSON:
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
+    // ADVANCED FILTERS PROCESSOR
+    // ═══════════════════════════════════════════════════════════════════════════
+    private buildQueryWithAdvancedFilters(baseQuery: string, filters?: any): string {
+        if (!filters || !Object.keys(filters).length) {
+            return baseQuery;
+        }
+
+        const parts = [baseQuery];
+
+        // Add locations to query
+        if (filters.locations && filters.locations.length > 0) {
+            parts.push(`(${filters.locations.map((loc: string) => `"${loc}"`).join(' OR ')})`);
+        }
+
+        // Add job titles to query
+        if (filters.jobTitles && filters.jobTitles.length > 0) {
+            parts.push(`(${filters.jobTitles.map((job: string) => `"${job}"`).join(' OR ')})`);
+        }
+
+        // Add industries to query
+        if (filters.industries && filters.industries.length > 0) {
+            parts.push(`(${filters.industries.map((ind: string) => `"${ind}"`).join(' OR ')})`);
+        }
+
+        // Add keywords to query
+        if (filters.keywords && filters.keywords.length > 0) {
+            parts.push(`(${filters.keywords.map((key: string) => `"${key}"`).join(' OR ')})`);
+        }
+
+        return parts.join(' AND ');
+    }
+
+    /**
+     * Check if a lead matches advanced filter criteria
+     */
+    private leadMatchesFilters(lead: Lead, filters?: any): boolean {
+        if (!filters) return true;
+
+        try {
+            // Check locations
+            if (filters.locations && filters.locations.length > 0) {
+                const leadLocation = (lead.location || '').toLowerCase();
+                const matchesLocation = filters.locations.some((loc: string) =>
+                    leadLocation.includes(loc.toLowerCase())
+                );
+                if (!matchesLocation) return false;
+            }
+
+            // Check company sizes (if available in lead data)
+            if (filters.companySizes && filters.companySizes.length > 0) {
+                // Company size usually comes from summary/analysis
+                const summary = (lead.aiAnalysis?.summary || '').toLowerCase();
+                const matchesSize = filters.companySizes.some((size: string) => {
+                    if (size === 'startup') return summary.includes('1-50') || summary.includes('pequeña');
+                    if (size === 'small') return summary.includes('1-100') || summary.includes('pequeña');
+                    if (size === 'medium') return summary.includes('100-1000') || summary.includes('mediana');
+                    if (size === 'large') return summary.includes('1000+') || summary.includes('grande');
+                    return summary.includes(size);
+                });
+                if (!matchesSize && filters.companySizes.length > 0) return false;
+            }
+
+            return true;
+        } catch (e) {
+            return true; // If filtering fails, keep the lead
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
     // DEEP RESEARCH - Context & Owner
     // ═══════════════════════════════════════════════════════════════════════════
     private async deepResearchLead(lead: Lead, onLog: LogCallback): Promise<string> {
@@ -415,7 +484,13 @@ Responde SOLO JSON:
 
             onLog(`[ATTEMPT ${attempts}] 🔄 Búsqueda: ${fetchAmount} candidatos (faltantes: ${needed})...`);
 
-            const query = `${interpreted.searchQuery} ${interpreted.location}`;
+            let query = `${interpreted.searchQuery} ${interpreted.location}`;
+            
+            // Apply advanced filters to query if available
+            if (config.advancedFilters) {
+                query = this.buildQueryWithAdvancedFilters(query, config.advancedFilters);
+                onLog(`[FILTERS] ✅ Filtros avanzados aplicados a la búsqueda`);
+            }
 
             // Call Maps Scraper with smart pagination
             // For Maps, we increase the total pool based on accumulated scans

@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { AutocompleteField } from './AutocompleteField';
 import { LOCATIONS, JOB_TITLES, COMPANY_SIZES, INDUSTRIES, KEYWORDS } from '../../lib/searchFilterData';
+import { AdvancedFilter } from '../../lib/types';
 import { MapPin, Briefcase, Building2, Layers, Sparkles } from 'lucide-react';
 
 interface AdvancedSearchFormProps {
-  onApply: (query: string) => void;
+  onApply: (data: { query: string; filters: AdvancedFilter }) => void;
   onCancel: () => void;
 }
 
@@ -73,7 +74,16 @@ export function AdvancedSearchForm({ onApply, onCancel }: AdvancedSearchFormProp
   const handleApply = () => {
     const query = buildQuery();
     if (query.trim()) {
-      onApply(query);
+      onApply({
+        query,
+        filters: {
+          locations,
+          jobTitles,
+          companySizes,
+          industries,
+          keywords
+        }
+      });
     }
   };
 
