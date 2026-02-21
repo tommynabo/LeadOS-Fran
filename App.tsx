@@ -10,7 +10,7 @@ import { CampaignsView } from './components/CampaignsView';
 import { HistoryModal } from './components/HistoryModal';
 import { Lead, SearchConfigState, PageView, SearchSession } from './lib/types';
 import { PROJECT_CONFIG } from './config/project';
-import { searchService } from './services/search/SearchService';
+import { bufferedSearchService } from './services/search/BufferedSearchService';
 import { autopilotService } from './services/autopilot/AutopilotService';
 import { supabase } from './lib/supabase';
 
@@ -89,7 +89,7 @@ function App() {
     autopilotService.initialize();
 
     return () => {
-      searchService.stop();
+      bufferedSearchService.stop();
       autopilotService.destroy();
     };
   }, []);
@@ -185,7 +185,7 @@ function App() {
     setLogs([]);
     setLeads([]);
 
-    searchService.startSearch(
+    bufferedSearchService.startBufferedSearch(
       config,
       // onLog
       (message) => addLog(message),
@@ -230,7 +230,7 @@ function App() {
   };
 
   const handleStop = () => {
-    searchService.stop();
+    bufferedSearchService.stop();
     setIsSearching(false);
     addLog('[SYSTEM] 🛑 Búsqueda detenida por el usuario.');
     autopilotService.markSearchComplete();
@@ -247,7 +247,7 @@ function App() {
     setLogs([]);
     setLeads([]);
 
-    searchService.startSearch(
+    bufferedSearchService.startBufferedSearch(
       autopilotConfig,
       (message) => addLog(message),
       async (results) => {
