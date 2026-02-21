@@ -12,7 +12,7 @@ export const EMAIL_DISCOVERY_CONFIG = {
         customSearchEngineId: import.meta.env.GOOGLE_CUSTOM_SEARCH_ENGINE_ID || '',
         // Para proyecto 2 (opcional)
         customSearchEngineId2: import.meta.env.GOOGLE_CUSTOM_SEARCH_ENGINE_ID_PROJECT2 || '',
-        
+
         // Límites
         maxQueriesPerDay: 100, // Gratis
         costPerExtraQuery: 0.0005, // Después de 100, cuesta $5 por 1000
@@ -64,7 +64,7 @@ export const EMAIL_DISCOVERY_CONFIG = {
     pipeline: {
         // Parar en primer intento exitoso o continuar para comparar
         stopOnFirstSuccess: true,
-        
+
         // Intentos a ejecutar en orden
         attemptOrder: [
             'apify_linkedin',
@@ -76,10 +76,10 @@ export const EMAIL_DISCOVERY_CONFIG = {
             'smtp_validation',
             'fallback'
         ],
-        
+
         // Umbral mínimo de confianza para aceptar resultado
         minConfidenceThreshold: 0.5, // 50%
-        
+
         // Timeouts por intento
         timeouts: {
             apify_linkedin: 15000,      // 15 segundos
@@ -90,7 +90,7 @@ export const EMAIL_DISCOVERY_CONFIG = {
             twitter: 12000,             // 12 segundos
             smtp_validation: 10000,     // 10 segundos
         },
-        
+
         // Parallel vs Sequential
         executeInParallel: false, // Cambiar a true para velocidad (pero más costoso)
     },
@@ -141,25 +141,27 @@ export function validateConfig(): { valid: boolean; errors: string[] } {
     const errors: string[] = [];
 
     if (!EMAIL_DISCOVERY_CONFIG.google.apiKey) {
-        errors.push('❌ GOOGLE_API_KEY no configurada en .env');
+        errors.push('⚠️ GOOGLE_API_KEY no configurada (Google Dorks desactivado)');
     }
     if (!EMAIL_DISCOVERY_CONFIG.google.customSearchEngineId) {
-        errors.push('❌ GOOGLE_CUSTOM_SEARCH_ENGINE_ID no configurada en .env');
+        errors.push('⚠️ GOOGLE_CUSTOM_SEARCH_ENGINE_ID no configurada (Google Dorks desactivado)');
     }
     if (!EMAIL_DISCOVERY_CONFIG.openai.apiKey) {
-        errors.push('❌ VITE_OPENAI_API_KEY no configurada en .env');
+        errors.push('⚠️ VITE_OPENAI_API_KEY no configurada (Extracción IA desactivada)');
     }
     if (!EMAIL_DISCOVERY_CONFIG.apify.apiToken) {
-        errors.push('❌ VITE_APIFY_API_TOKEN no configurada en .env');
+        errors.push('❌ VITE_APIFY_API_TOKEN requerida para Apify.');
     }
 
     if (errors.length > 0) {
-        console.error('⚠️ Configuración incompleta:');
-        errors.forEach(e => console.error(e));
+        console.warn('⚠️ Configuración EmailDiscovery incompleta (usando fallbacks):');
+        errors.forEach(e => console.warn(e));
     }
 
+    const hasFatalErrors = !EMAIL_DISCOVERY_CONFIG.apify.apiToken;
+
     return {
-        valid: errors.length === 0,
+        valid: !hasFatalErrors,
         errors
     };
 }

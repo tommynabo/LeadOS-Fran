@@ -35,8 +35,8 @@ export class EmailDiscoveryPipeline {
         // Validar configuración
         const config = validateConfig();
         if (!config.valid) {
-            console.error('❌ Configuración incompleta. Revisa .env.local');
-            return null;
+            console.warn('⚠️ Configuración incompleta. Algunos métodos (ej. Google Dorks) fallarán, pero el pipeline continuará con los métodos disponibles.');
+            // Removed return null; to allow fallback methods to run
         }
 
         this.isRunning = true;
