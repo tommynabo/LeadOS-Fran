@@ -407,9 +407,26 @@ Responde SOLO JSON:
 
         try {
             const itemsRes = await fetch(`${baseUrl}/datasets/${defaultDatasetId}/items?token=${this.apiKey}`);
-            return await itemsRes.json();
+            if (!itemsRes.ok) {
+                onLog(`[APIFY] ❌ Error downloading items: ${itemsRes.status}`);
+                return [];
+            }
+            
+            const data = await itemsRes.json();
+            
+            // Normalizar respuesta - puede venir como array directo o como objeto wrapper
+            if (Array.isArray(data)) {
+                return data;
+            } else if (data.items && Array.isArray(data.items)) {
+                return data.items;
+            } else if (data.data && Array.isArray(data.data)) {
+                return data.data;
+            } else {
+                onLog(`[APIFY] ⚠️ Unexpected data structure, received: ${JSON.stringify(data).substring(0, 100)}`);
+                return Array.isArray(data) ? data : [];
+            }
         } catch (e) {
-            onLog(`[APIFY] Error al descargar resultados: ${e}`);
+            onLog(`[APIFY] ❌ Error al descargar resultados: ${e}`);
             return [];
         }
     }
@@ -476,6 +493,9 @@ Responde SOLO JSON:
         }
 
         try {
+            onLog(`\n[SYSTEM] 🚀 Iniciando búsqueda: "${config.query}"`);
+            onLog(`[SYSTEM] 📊 Máximo de resultados: ${config.maxResults}`);
+            
             onLog(`[IA] 🧠 Analizando estrategia para: "${config.query}"...`);
             const interpreted = await this.interpretQuery(config.query, config.source);
 
@@ -484,13 +504,16 @@ Responde SOLO JSON:
             onLog(`[SYSTEM] 🛡️ Sistema Anti-Duplicados activado. ${existingLeads.size} empresas en lista negra.`);
 
             if (config.source === 'linkedin') {
+                onLog(`[SYSTEM] 🔍 Modo: LinkedIn X-Ray\n`);
                 await this.searchLinkedIn(config, interpreted, existingLeads, onLog, onComplete);
             } else {
+                onLog(`[SYSTEM] 🔍 Modo: Gmail + Google Maps\n`);
                 await this.searchGmailWithYieldGuarantee(config, interpreted, existingLeads, onLog, onComplete);
             }
 
         } catch (error: any) {
-            onLog(`[ERROR] ❌ ${error.message}`);
+            onLog(`\n[ERROR] ❌ Error en búsqueda: ${error.message}`);
+            onLog(`[ERROR] Stack: ${error.stack?.split('\\n')[0]}`);
             onComplete([]);
         } finally {
             this.isRunning = false;
@@ -783,14 +806,32 @@ Responde SOLO JSON:
                     maxPagesPerQuery: currentPage, // Paginate through results
                 }, onLog);
 
+                // Procesar resultados: pueden venir en diferentes formatos
                 let pageResults: any[] = [];
+                
+                onLog(`[LINKEDIN-DEBUG] 📋 Estructura de datos recibida: ${results.length} items`);
+                if (results.length > 0) {
+                    onLog(`[LINKEDIN-DEBUG] Primer item: ${JSON.stringify(results[0]).substring(0, 150)}...`);
+                }
+                
                 for (const run of results) {
-                    if (!run.organicResults) continue;
-                    pageResults = pageResults.concat(run.organicResults);
+                    // Formato 1: Cada item tiene organicResults
+                    if (run.organicResults && Array.isArray(run.organicResults)) {
+                        pageResults = pageResults.concat(run.organicResults);
+                    }
+                    // Formato 2: El item mismo es un resultado con title y url
+                    else if (run.title && run.url) {
+                        pageResults.push(run);
+                    }
+                    // Formato 3: Item tiene links
+                    else if (run.links && Array.isArray(run.links)) {
+                        pageResults = pageResults.concat(run.links);
+                    }
                 }
 
                 if (pageResults.length === 0) {
-                    onLog(`[LINKEDIN-ATTEMPT ${attempts}/${MAX_ATTEMPTS}] ⚠️ No se encontraron resultados.`);
+                    onLog(`[LINKEDIN-ATTEMPT ${attempts}/${MAX_ATTEMPTS}] ⚠️ No se encontraron resultados (0 items procesados).`);
+                    onLog(`[LINKEDIN-ATTEMPT ${attempts}/${MAX_ATTEMPTS}] 🔍 Verificar estructura de datos de Apify...`);
                     break; // No more pages
                 }
 
@@ -799,6 +840,12 @@ Responde SOLO JSON:
                 // Process results
                 for (const item of pageResults) {
                     if (validLeads.length >= targetCount) break;
+
+                    // Validar que item tiene datos necesarios
+                    if (!item.title || !item.url) {
+                        onLog(`[LINKEDIN-DEBUG] ⚠️ Item sin title o url: ${JSON.stringify(item).substring(0, 100)}`);
+                        continue;
+                    }
 
                     // Parse Title: "Nombre Apellido - Cargo - Empresa | LinkedIn"
                     const title = item.title;
@@ -848,7 +895,7 @@ Responde SOLO JSON:
                     };
 
                     validLeads.push(lead);
-                    onLog(`[LINKEDIN] ✅ Lead ${validLeads.length}/${targetCount}: ${name} (${company})`);
+                    onLog(`[LINKEDIN] ✅ Lead ${validLeads.length}/${targetCount}: ${name} (${company}) - ${item.url}`);
                 }
 
                 // Move to next page for pagination

@@ -189,33 +189,53 @@ export class BufferedSearchService {
         onLog: LogCallback
     ): Promise<void> {
         const targetCount = config.maxResults || 5;
-        const maxIterations = 2; // Reducido de 3 a 2 iteraciones
+        const maxIterations = 2;
 
-        // 🔒 IMPORTANTE: Si el usuario elige explícitamente una fuente, RESPETARLA
-        // No hacer fallback automático a otra fuente
-        const userSelectedSource = config.source; // 'gmail' o 'linkedin'
-        const allowFallback = false; // Desactivar fallback automático
+        const userSelectedSource = config.source;
+        const readyBefore = this.buffer[BufferStage.READY].length;
 
-        onLog(`\n🔐 Fuente seleccionada: ${userSelectedSource.toUpperCase()} (sin fallback automático)`);
-
-        // Ejecutar SOLO la estrategia seleccionada
-        const tempConfig = { ...config, source: userSelectedSource };
-        
-        onLog(`\n🔄 Iniciando búsqueda con: ${this.getStrategyName(userSelectedSource)}`);
+        onLog(`\n🔐 Fuente seleccionada: ${userSelectedSource.toUpperCase()}`);
+        onLog(`🔄 Iniciando búsqueda con: ${this.getStrategyName(userSelectedSource)}`);
         onLog(`📍 Objetivo: ${targetCount} leads\n`);
 
-        this.metrics.totalMethods = 1; // Solo 1 método
+        this.metrics.totalMethods = 1;
 
         // Ejecutar la estrategia seleccionada
+        const tempConfig = { ...config, source: userSelectedSource };
         await this.executeStrategyWithRetry(tempConfig, onLog, maxIterations);
 
-        const totalReady = this.buffer[BufferStage.READY].length;
+        const readyAfter = this.buffer[BufferStage.READY].length;
+        const foundInPrimary = readyAfter - readyBefore;
+
+        if (foundInPrimary > 0) {
+            // ✅ La búsqueda primaria funcionó
+            onLog(`\n📊 Status: ${foundInPrimary} leads encontrados en ${userSelectedSource.toUpperCase()}`);
+            return;
+        }
+
+        // ⚠️ La búsqueda primaria NO devolvió nada
+        onLog(`\n⚠️ No se encontraron resultados en ${userSelectedSource.toUpperCase()}`);
         
-        if (totalReady === 0) {
-            onLog(`\n⚠️ No se encontraron resultados en ${userSelectedSource.toUpperCase()}`);
-            onLog(`💡 Sugerencia: Si deseas intentar otra fuente, cambia el selector y reintenta.`);
-        } else {
-            onLog(`\n📊 Status Final: ${totalReady} leads encontrados en ${userSelectedSource.toUpperCase()}`);
+        // 🔄 FALLBACK INTELIGENTE: Solo si NO hay resultados en la búsqueda primaria
+        // Permitimos intentar con otra fuente para GARANTIZAR resultados
+        const fallbackSource = userSelectedSource === 'linkedin' ? 'gmail' : 'linkedin';
+        
+        if (readyAfter < targetCount) {
+            onLog(`\n🆘 Activando fallback automático a ${fallbackSource.toUpperCase()} para garantizar resultados...`);
+            onLog(`💡 Esto ocurre solo porque la búsqueda primaria NO devolvió nada\n`);
+            
+            this.metrics.totalMethods++;
+            const fallbackConfig = { ...config, source: fallbackSource };
+            await this.executeStrategyWithRetry(fallbackConfig, onLog, maxIterations);
+            
+            const readyFinal = this.buffer[BufferStage.READY].length;
+            const foundInFallback = readyFinal - readyAfter;
+            
+            if (foundInFallback > 0) {
+                onLog(`\n✅ Fallback exitoso: ${foundInFallback} leads encontrados en ${fallbackSource.toUpperCase()}`);
+            } else {
+                onLog(`\n⚠️ Tampoco hay resultados en ${fallbackSource.toUpperCase()}`);
+            }
         }
     }
 
@@ -255,12 +275,25 @@ export class BufferedSearchService {
             onLog(`  ↳ Iteración ${iteration}/${maxIterations} (faltantes: ${needed})...`);
 
             try {
+                let leadsReceived = 0;
+                
                 await new Promise<void>((resolve) => {
                     searchService.startSearch(config, onLog, (leads) => {
+                        leadsReceived = leads.length;
+                        if (leads.length === 0) {
+                            onLog(`  ⚠️ Iteración ${iteration}: Búsqueda devolvió 0 leads`);
+                        } else {
+                            onLog(`  📥 Iteración ${iteration}: Recibidos ${leads.length} candidatos`);
+                        }
                         this.processIncomingLeads(leads, config.source, iteration, onLog);
                         resolve();
                     });
                 });
+                
+                if (leadsReceived === 0 && iteration === 1) {
+                    onLog(`  💡 Primera iteración sin resultados. Es posible que no haya matches para esta búsqueda.`);
+                }
+                
             } catch (e) {
                 onLog(`  ⚠️ Error en iteración ${iteration}: ${e}`);
                 // Continue to next iteration
