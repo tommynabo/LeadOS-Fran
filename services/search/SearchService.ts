@@ -350,24 +350,68 @@ Responde SOLO JSON:
 
         let isFinished = false;
         let pollCount = 0;
-        while (!isFinished && this.isRunning && pollCount < 120) { // Increased timeout
+        const MAX_POLLS = 25; // ~2.5 minutos máximo (25 polls * 5 segundos)
+        let lastStatus = '';
+        let statusUnchangedCount = 0;
+
+        while (!isFinished && this.isRunning && pollCount < MAX_POLLS) {
             await new Promise(r => setTimeout(r, 5000));
             pollCount++;
 
-            const statusRes = await fetch(`${baseUrl}/acts/${actorId}/runs/${runId}?token=${this.apiKey}`);
-            const statusData = await statusRes.json();
-            const status = statusData.data.status;
+            try {
+                const statusRes = await fetch(`${baseUrl}/acts/${actorId}/runs/${runId}?token=${this.apiKey}`);
+                const statusData = await statusRes.json();
+                const status = statusData.data.status;
 
-            if (pollCount % 4 === 0) onLog(`[APIFY] Estado: ${status}`);
+                // Detectar si el run está stuck en RUNNING
+                if (status === lastStatus) {
+                    statusUnchangedCount++;
+                } else {
+                    statusUnchangedCount = 0;
+                    lastStatus = status;
+                }
 
-            if (status === 'SUCCEEDED') isFinished = true;
-            else if (status === 'FAILED' || status === 'ABORTED') throw new Error(`Actor falló: ${status}`);
+                // Si lleva 10 polls sin cambiar status, abortar (el run probablement está stuck)
+                if (statusUnchangedCount > 10 && status === 'RUNNING') {
+                    onLog(`[APIFY] ⚠️ Run stuck en RUNNING por 50 segundos. Abortando...`);
+                    throw new Error(`Actor stuck: ${status} for too long`);
+                }
+
+                if (pollCount % 4 === 0) onLog(`[APIFY] Estado: ${status} (poll ${pollCount}/${MAX_POLLS})`);
+
+                if (status === 'SUCCEEDED') isFinished = true;
+                else if (status === 'FAILED' || status === 'ABORTED') throw new Error(`Actor falló: ${status}`);
+            } catch (e: any) {
+                if (e.message.includes('Actor')) throw e;
+                // Network error, continue polling
+                onLog(`[APIFY] Polling error: ${e.message}, retrying...`);
+            }
         }
 
-        if (!this.isRunning) return [];
+        if (!this.isRunning) {
+            onLog(`[APIFY] ⚠️ Búsqueda cancelada por usuario`);
+            return [];
+        }
 
-        const itemsRes = await fetch(`${baseUrl}/datasets/${defaultDatasetId}/items?token=${this.apiKey}`);
-        return await itemsRes.json();
+        if (pollCount >= MAX_POLLS && !isFinished) {
+            onLog(`[APIFY] ⚠️ Timeout alcanzado (${MAX_POLLS * 5} segundos). Retornando resultados parciales...`);
+            // Intentar devolver lo que ya se tiene
+            try {
+                const itemsRes = await fetch(`${baseUrl}/datasets/${defaultDatasetId}/items?token=${this.apiKey}`);
+                const items = await itemsRes.json();
+                return Array.isArray(items) ? items : [];
+            } catch (e) {
+                return [];
+            }
+        }
+
+        try {
+            const itemsRes = await fetch(`${baseUrl}/datasets/${defaultDatasetId}/items?token=${this.apiKey}`);
+            return await itemsRes.json();
+        } catch (e) {
+            onLog(`[APIFY] Error al descargar resultados: ${e}`);
+            return [];
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -713,10 +757,10 @@ Responde SOLO JSON:
         const targetCount = config.maxResults || 5;
         const validLeads: Lead[] = [];
         let attempts = 0;
-        const MAX_ATTEMPTS = 10;
+        const MAX_ATTEMPTS = 2; // Máximo 2 intentos (era 10)
         let currentPage = 1; // Pagination tracker for Google Search
 
-        onLog(`[LINKEDIN] 🚀 Iniciando búsqueda X-Ray con Smart Loop...`);
+        onLog(`[LINKEDIN] 🚀 Iniciando búsqueda X-Ray con Smart Loop (máx ${MAX_ATTEMPTS} intentos)...`);
 
         // Smart Loop for LinkedIn pagination
         while (validLeads.length < targetCount && this.isRunning && attempts < MAX_ATTEMPTS) {
@@ -724,7 +768,7 @@ Responde SOLO JSON:
             const needed = targetCount - validLeads.length;
             const resultsToFetch = Math.min(needed * 4, 100); // x4 multiplier, but cap reasonably
 
-            onLog(`[LINKEDIN-ATTEMPT ${attempts}] 🔄 Página ${currentPage}: buscando ${resultsToFetch} resultados...`);
+            onLog(`[LINKEDIN-ATTEMPT ${attempts}/${MAX_ATTEMPTS}] 🔄 Página ${currentPage}: buscando ${resultsToFetch} resultados...`);
 
             const queries = interpreted.targetRoles.slice(0, 2).map(role =>
                 `site:linkedin.com/in/ "${role}" "${interpreted.industry}" ${interpreted.location}`
@@ -746,11 +790,11 @@ Responde SOLO JSON:
                 }
 
                 if (pageResults.length === 0) {
-                    onLog(`[LINKEDIN-ATTEMPT ${attempts}] ⚠️ No se encontraron más resultados en la página ${currentPage}.`);
+                    onLog(`[LINKEDIN-ATTEMPT ${attempts}/${MAX_ATTEMPTS}] ⚠️ No se encontraron resultados.`);
                     break; // No more pages
                 }
 
-                onLog(`[LINKEDIN-ATTEMPT ${attempts}] 📊 ${pageResults.length} resultados encontrados.`);
+                onLog(`[LINKEDIN-ATTEMPT ${attempts}/${MAX_ATTEMPTS}] 📊 ${pageResults.length} resultados encontrados.`);
 
                 // Process results
                 for (const item of pageResults) {
@@ -808,11 +852,17 @@ Responde SOLO JSON:
                 }
 
                 // Move to next page for pagination
-                currentPage++;
+                if (validLeads.length < targetCount) {
+                    currentPage++;
+                }
 
             } catch (e: any) {
-                onLog(`[ERROR] LinkedIn Search Failed (attempt ${attempts}): ${e.message}`);
-                break;
+                onLog(`[WARNING] LinkedIn Search (attempt ${attempts}/${MAX_ATTEMPTS}): ${e.message}`);
+                // Si falla, tenemos máximo un intento más
+                if (attempts >= MAX_ATTEMPTS) {
+                    onLog(`[LINKEDIN] Intentos agotados.`);
+                    break;
+                }
             }
         }
 

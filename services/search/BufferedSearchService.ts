@@ -189,12 +189,13 @@ export class BufferedSearchService {
         onLog: LogCallback
     ): Promise<void> {
         const targetCount = config.maxResults || 5;
-        const maxIterations = 3; // Máximo 3 iteraciones de estrategias
+        const maxIterations = 2; // Reducido de 3 a 2 iteraciones
+        const maxStrategies = 2; // Máximo 2 estrategias (Gmail + fallback)
 
         // Determinar orden de intentos basado en fuente preferida
         const strategies = this.getStrategyOrder(config.source);
 
-        for (let strategyIndex = 0; strategyIndex < strategies.length; strategyIndex++) {
+        for (let strategyIndex = 0; strategyIndex < Math.min(strategies.length, maxStrategies); strategyIndex++) {
             if (!this.isRunning) break;
 
             const strategy = strategies[strategyIndex];
@@ -206,7 +207,7 @@ export class BufferedSearchService {
                 break;
             }
 
-            onLog(`\n🔄 ESTRATEGIA ${strategyIndex + 1}/${strategies.length}: ${this.getStrategyName(strategy)}`);
+            onLog(`\n🔄 ESTRATEGIA ${strategyIndex + 1}/${Math.min(maxStrategies, strategies.length)}: ${this.getStrategyName(strategy)}`);
             onLog(`📍 Status Actual: ${readyCount}/${targetCount} leads ready\n`);
 
             this.metrics.totalMethods++;
@@ -214,6 +215,11 @@ export class BufferedSearchService {
             // Ejecutar esta estrategia
             const tempConfig = { ...config, source: strategy };
             await this.executeStrategyWithRetry(tempConfig, onLog, maxIterations);
+
+            // Si aún no tenemos resultados después de esta estrategia, dar break
+            if (this.buffer[BufferStage.READY].length === 0 && strategyIndex === 0) {
+                onLog(`\n⚠️ Estrategia 1 sin resultados, manteniendo estrategia alternativa...`);
+            }
         }
 
         const totalReady = this.buffer[BufferStage.READY].length;
@@ -229,8 +235,21 @@ export class BufferedSearchService {
         onLog: LogCallback,
         maxIterations: number
     ): Promise<void> {
+        const maxTimeoutMinutes = 10; // Máximo 10 minutos total por estrategia
+        const startTime = Date.now();
+        const timeoutMs = maxTimeoutMinutes * 60 * 1000;
+
         for (let iteration = 1; iteration <= maxIterations; iteration++) {
-            if (!this.isRunning) break;
+            if (!this.isRunning) {
+                onLog(`✅ Búsqueda cancelada por usuario`);
+                break;
+            }
+
+            // Revisar timeout global
+            if (Date.now() - startTime > timeoutMs) {
+                onLog(`⏱️ Timeout alcanzado (${maxTimeoutMinutes} minutos). Cancelando iteraciones...`);
+                break;
+            }
 
             const readyCount = this.buffer[BufferStage.READY].length;
             const needed = (config.maxResults || 5) - readyCount;
@@ -242,12 +261,17 @@ export class BufferedSearchService {
 
             onLog(`  ↳ Iteración ${iteration}/${maxIterations} (faltantes: ${needed})...`);
 
-            await new Promise<void>((resolve) => {
-                searchService.startSearch(config, onLog, (leads) => {
-                    this.processIncomingLeads(leads, config.source, iteration, onLog);
-                    resolve();
+            try {
+                await new Promise<void>((resolve) => {
+                    searchService.startSearch(config, onLog, (leads) => {
+                        this.processIncomingLeads(leads, config.source, iteration, onLog);
+                        resolve();
+                    });
                 });
-            });
+            } catch (e) {
+                onLog(`  ⚠️ Error en iteración ${iteration}: ${e}`);
+                // Continue to next iteration
+            }
 
             // Pequeña pausa entre iteraciones
             await new Promise(r => setTimeout(r, 1000));
