@@ -411,9 +411,9 @@ Responde SOLO JSON:
                 onLog(`[APIFY] ❌ Error downloading items: ${itemsRes.status}`);
                 return [];
             }
-            
+
             const data = await itemsRes.json();
-            
+
             // Normalizar respuesta - puede venir como array directo o como objeto wrapper
             if (Array.isArray(data)) {
                 return data;
@@ -436,7 +436,7 @@ Responde SOLO JSON:
     // ═══════════════════════════════════════════════════════════════════════════
     private async loadExistingLeads(): Promise<Set<string>> {
         const bannedIdentifiers = new Set<string>();
-        
+
         try {
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) return bannedIdentifiers;
@@ -495,7 +495,7 @@ Responde SOLO JSON:
         try {
             onLog(`\n[SYSTEM] 🚀 Iniciando búsqueda: "${config.query}"`);
             onLog(`[SYSTEM] 📊 Máximo de resultados: ${config.maxResults}`);
-            
+
             onLog(`[IA] 🧠 Analizando estrategia para: "${config.query}"...`);
             const interpreted = await this.interpretQuery(config.query, config.source);
 
@@ -546,13 +546,14 @@ Responde SOLO JSON:
             attempts++;
             const needed = targetCount - validLeads.length;
 
-            // Smart Loop: Use x4 multiplier for batch size
-            const fetchAmount = needed * 4;
+            // Smart Loop: Fetch a MUCH larger pool to guarantee "SI O SI" we find leads
+            // En vez de x4, pedimos un mínimo alto para tener de donde filtrar duplicados
+            const fetchAmount = Math.max(needed * 10, 60);
 
             onLog(`[ATTEMPT ${attempts}] 🔄 Búsqueda: ${fetchAmount} candidatos (faltantes: ${needed})...`);
 
             let query = `${interpreted.searchQuery} ${interpreted.location}`;
-            
+
             // Apply advanced filters to query if available
             if (config.advancedFilters) {
                 query = this.buildQueryWithAdvancedFilters(query, config.advancedFilters);
@@ -574,7 +575,7 @@ Responde SOLO JSON:
             }, (msg) => { }); // Silent sub-logs
 
             if (mapsResults.length === 0) {
-                onLog(`[ATTEMPT ${attempts}] ⚠️ No se encontraron más candidatos en Maps. Finalizando...`);
+                onLog(`[ATTEMPT ${attempts}] ⚠️ No se encontraron más candidatos en Maps. Terminando loop temprano...`);
                 break; // No more results available from source
             }
 
@@ -603,8 +604,19 @@ Responde SOLO JSON:
             totalScannedPreviously += mapsResults.length;
 
             if (newCandidates.length === 0) {
-                onLog(`[ATTEMPT ${attempts}] ⚠️ Todos los candidatos encontrados ya existen o están duplicados. Sin resultados válidos nuevos.`);
-                break; // If no new non-duplicate candidates, stop
+                onLog(`[ATTEMPT ${attempts}] ⚠️ Todos los candidatos encontrados ya existen o están duplicados.`);
+                if (attempts >= MAX_ATTEMPTS) {
+                    onLog(`[ATTEMPT ${attempts}] 🚨 MODO DESESPERACIÓN: Forzando guardado ignorando duplicados para cumplir cuota "SI O SI".`);
+                    // Injecting fallback leads to guarantee yield
+                    const desperationCandidates = mapsResults.filter((m: any) => !validLeads.some(l => l.companyName === m.title)).slice(0, needed);
+                    if (desperationCandidates.length > 0) {
+                        newCandidates.push(...desperationCandidates);
+                    } else {
+                        break;
+                    }
+                } else {
+                    continue; // Skip this loop and try again with deeper pagination
+                }
             }
 
             onLog(`[ATTEMPT ${attempts}] ✨ ${newCandidates.length} candidatos NUEVOS después de deduplicación.`);
@@ -780,7 +792,7 @@ Responde SOLO JSON:
         const targetCount = config.maxResults || 5;
         const validLeads: Lead[] = [];
         let attempts = 0;
-        const MAX_ATTEMPTS = 2; // Máximo 2 intentos (era 10)
+        const MAX_ATTEMPTS = 4; // Aumentado a 4 intentos para más garantías
         let currentPage = 1; // Pagination tracker for Google Search
 
         onLog(`[LINKEDIN] 🚀 Iniciando búsqueda X-Ray con Smart Loop (máx ${MAX_ATTEMPTS} intentos)...`);
@@ -789,13 +801,24 @@ Responde SOLO JSON:
         while (validLeads.length < targetCount && this.isRunning && attempts < MAX_ATTEMPTS) {
             attempts++;
             const needed = targetCount - validLeads.length;
-            const resultsToFetch = Math.min(needed * 4, 100); // x4 multiplier, but cap reasonably
 
-            onLog(`[LINKEDIN-ATTEMPT ${attempts}/${MAX_ATTEMPTS}] 🔄 Página ${currentPage}: buscando ${resultsToFetch} resultados...`);
+            // Garantizamos buscar MUCHOS resultados de base para asegurar "SI O SI"
+            const resultsToFetch = Math.max(needed * 20, 50);
 
-            const queries = interpreted.targetRoles.slice(0, 2).map(role =>
+            onLog(`[LINKEDIN-ATTEMPT ${attempts}/${MAX_ATTEMPTS}] 🔄 Página ${currentPage}: buscando ${resultsToFetch} resultados mínimos...`);
+
+            // Añadimos variabilidad en las queries para asegurar nuevos resultados en reintentos
+            let queries = interpreted.targetRoles.slice(0, 3).map(role =>
                 `site:linkedin.com/in/ "${role}" "${interpreted.industry}" ${interpreted.location}`
             );
+
+            // Si nos atascamos, quitamos "ubicación" estricta en el último intento ("MODO DESESPERACIÓN")
+            if (attempts === MAX_ATTEMPTS) {
+                onLog(`[LINKEDIN-ATTEMPT ${attempts}/${MAX_ATTEMPTS}] 🚨 MODO DESESPERACIÓN: Ampliando búsqueda sin importar duplicados ni ubicación estricta.`);
+                queries = interpreted.targetRoles.slice(0, 2).map(role =>
+                    `site:linkedin.com/in/ "${role}" "${interpreted.industry}"`
+                );
+            }
 
             try {
                 const results = await this.callApifyActor(GOOGLE_SEARCH_SCRAPER, {
@@ -808,12 +831,12 @@ Responde SOLO JSON:
 
                 // Procesar resultados: pueden venir en diferentes formatos
                 let pageResults: any[] = [];
-                
+
                 onLog(`[LINKEDIN-DEBUG] 📋 Estructura de datos recibida: ${results.length} items`);
                 if (results.length > 0) {
                     onLog(`[LINKEDIN-DEBUG] Primer item: ${JSON.stringify(results[0]).substring(0, 150)}...`);
                 }
-                
+
                 for (const run of results) {
                     // Formato 1: Cada item tiene organicResults
                     if (run.organicResults && Array.isArray(run.organicResults)) {
@@ -858,11 +881,16 @@ Responde SOLO JSON:
                     const cleanCompany = company.toLowerCase();
                     if (existingLeads.has(cleanCompany)) {
                         onLog(`[LINKEDIN-ATTEMPT ${attempts}] 🔄 Duplicado encontrado: ${company}`);
-                        continue;
+                        // En modo desesperación ignoramos los duplicados antiguos para entregar "SI O SI"
+                        if (attempts < MAX_ATTEMPTS) {
+                            continue;
+                        } else {
+                            onLog(`[LINKEDIN-ATTEMPT ${attempts}] 🚨 MODO DESESPERACIÓN: Aceptando duplicado: ${company}`);
+                        }
                     }
 
-                    // Check local duplicates
-                    if (validLeads.some(l => l.companyName === company)) {
+                    // Check local duplicates in current run
+                    if (validLeads.some(l => l.companyName === company || l.decisionMaker?.name === name)) {
                         continue;
                     }
 
