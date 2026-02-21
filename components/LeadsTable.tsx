@@ -1,6 +1,6 @@
 import React from 'react';
 import { Lead } from '../lib/types';
-import { User, Mail, MessageSquare, ExternalLink, CheckCircle2, Clock, Database, Sparkles } from 'lucide-react';
+import { User, Mail, MessageSquare, ExternalLink, CheckCircle2, Clock, Database, Sparkles, Linkedin } from 'lucide-react';
 
 interface LeadsTableProps {
   leads: Lead[];
@@ -121,6 +121,17 @@ export function LeadsTable({ leads, onViewMessage }: LeadsTableProps) {
                         <span className="w-3 h-3 flex items-center justify-center font-bold">#</span>
                         <span>{lead.decisionMaker.phone}</span>
                       </div>
+                    )}
+                    {lead.decisionMaker?.linkedin && (
+                      <a
+                        href={lead.decisionMaker.linkedin}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 transition-colors mt-1"
+                      >
+                        <Linkedin className="w-3 h-3" />
+                        <span>Ver Perfil</span>
+                      </a>
                     )}
                   </div>
                 </td>
