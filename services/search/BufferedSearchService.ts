@@ -100,8 +100,12 @@ export class BufferedSearchService {
             // FASE 0: Cargar leads existentes
             await this.loadExistingLeads(onLog);
 
+            // Obtener userId de Supabase
+            const { data: { user } } = await supabase.auth.getUser();
+            const userId = user?.id || null;
+
             // FASE 1: ESTRATEGIA MULTI-FUENTE
-            await this.executeMultiSourceStrategy(config, onLog);
+            await this.executeMultiSourceStrategy(config, userId, onLog);
 
             // FASE 2: PROCESAR BUFFER
             await this.processBuffer(onLog);
@@ -186,6 +190,7 @@ export class BufferedSearchService {
 
     private async executeMultiSourceStrategy(
         config: SearchConfigState,
+        userId: string | null,
         onLog: LogCallback
     ): Promise<void> {
         const targetCount = config.maxResults || 5;
@@ -202,7 +207,7 @@ export class BufferedSearchService {
 
         // Ejecutar la estrategia seleccionada
         const tempConfig = { ...config, source: userSelectedSource };
-        await this.executeStrategyWithRetry(tempConfig, onLog, maxIterations);
+        await this.executeStrategyWithRetry(tempConfig, userId, onLog, maxIterations);
 
         const readyAfter = this.buffer[BufferStage.READY].length;
         const foundInPrimary = readyAfter - readyBefore;
@@ -224,6 +229,7 @@ export class BufferedSearchService {
 
     private async executeStrategyWithRetry(
         config: SearchConfigState,
+        userId: string | null,
         onLog: LogCallback,
         maxIterations: number
     ): Promise<void> {
@@ -257,7 +263,7 @@ export class BufferedSearchService {
                 let leadsReceived = 0;
                 
                 await new Promise<void>((resolve) => {
-                    searchService.startSearch(config, onLog, (leads) => {
+                    searchService.startSearch(config, userId, onLog, (leads) => {
                         leadsReceived = leads.length;
                         if (leads.length === 0) {
                             onLog(`  ⚠️ Iteración ${iteration}: Búsqueda devolvió 0 leads`);
