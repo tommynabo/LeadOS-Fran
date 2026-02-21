@@ -190,40 +190,33 @@ export class BufferedSearchService {
     ): Promise<void> {
         const targetCount = config.maxResults || 5;
         const maxIterations = 2; // Reducido de 3 a 2 iteraciones
-        const maxStrategies = 2; // Máximo 2 estrategias (Gmail + fallback)
 
-        // Determinar orden de intentos basado en fuente preferida
-        const strategies = this.getStrategyOrder(config.source);
+        // 🔒 IMPORTANTE: Si el usuario elige explícitamente una fuente, RESPETARLA
+        // No hacer fallback automático a otra fuente
+        const userSelectedSource = config.source; // 'gmail' o 'linkedin'
+        const allowFallback = false; // Desactivar fallback automático
 
-        for (let strategyIndex = 0; strategyIndex < Math.min(strategies.length, maxStrategies); strategyIndex++) {
-            if (!this.isRunning) break;
+        onLog(`\n🔐 Fuente seleccionada: ${userSelectedSource.toUpperCase()} (sin fallback automático)`);
 
-            const strategy = strategies[strategyIndex];
-            const readyCount = this.buffer[BufferStage.READY].length;
+        // Ejecutar SOLO la estrategia seleccionada
+        const tempConfig = { ...config, source: userSelectedSource };
+        
+        onLog(`\n🔄 Iniciando búsqueda con: ${this.getStrategyName(userSelectedSource)}`);
+        onLog(`📍 Objetivo: ${targetCount} leads\n`);
 
-            // Si ya tenemos suficientes, parar
-            if (readyCount >= targetCount) {
-                onLog(`✅ Objetivo alcanzado (${readyCount}/${targetCount})`);
-                break;
-            }
+        this.metrics.totalMethods = 1; // Solo 1 método
 
-            onLog(`\n🔄 ESTRATEGIA ${strategyIndex + 1}/${Math.min(maxStrategies, strategies.length)}: ${this.getStrategyName(strategy)}`);
-            onLog(`📍 Status Actual: ${readyCount}/${targetCount} leads ready\n`);
-
-            this.metrics.totalMethods++;
-
-            // Ejecutar esta estrategia
-            const tempConfig = { ...config, source: strategy };
-            await this.executeStrategyWithRetry(tempConfig, onLog, maxIterations);
-
-            // Si aún no tenemos resultados después de esta estrategia, dar break
-            if (this.buffer[BufferStage.READY].length === 0 && strategyIndex === 0) {
-                onLog(`\n⚠️ Estrategia 1 sin resultados, manteniendo estrategia alternativa...`);
-            }
-        }
+        // Ejecutar la estrategia seleccionada
+        await this.executeStrategyWithRetry(tempConfig, onLog, maxIterations);
 
         const totalReady = this.buffer[BufferStage.READY].length;
-        onLog(`\n📊 Status Final Usuario: ${totalReady} leads listos`);
+        
+        if (totalReady === 0) {
+            onLog(`\n⚠️ No se encontraron resultados en ${userSelectedSource.toUpperCase()}`);
+            onLog(`💡 Sugerencia: Si deseas intentar otra fuente, cambia el selector y reintenta.`);
+        } else {
+            onLog(`\n📊 Status Final: ${totalReady} leads encontrados en ${userSelectedSource.toUpperCase()}`);
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -488,11 +481,9 @@ export class BufferedSearchService {
     // ═══════════════════════════════════════════════════════════════════════════
 
     private getStrategyOrder(preferredSource: 'gmail' | 'linkedin'): ('gmail' | 'linkedin')[] {
-        if (preferredSource === 'gmail') {
-            return ['gmail', 'linkedin']; // Gmail primero, LinkedIn como fallback
-        } else {
-            return ['linkedin', 'gmail']; // LinkedIn primero, Gmail como fallback
-        }
+        // 🔒 SOLO devolver la fuente seleccionada (sin fallback automático)
+        // El usuario eligió explícitamente la fuente
+        return [preferredSource];
     }
 
     private getStrategyName(strategy: 'gmail' | 'linkedin'): string {
