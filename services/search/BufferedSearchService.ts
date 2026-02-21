@@ -215,28 +215,7 @@ export class BufferedSearchService {
 
         // ⚠️ La búsqueda primaria NO devolvió nada
         onLog(`\n⚠️ No se encontraron resultados en ${userSelectedSource.toUpperCase()}`);
-        
-        // 🔄 FALLBACK INTELIGENTE: Solo si NO hay resultados en la búsqueda primaria
-        // Permitimos intentar con otra fuente para GARANTIZAR resultados
-        const fallbackSource = userSelectedSource === 'linkedin' ? 'gmail' : 'linkedin';
-        
-        if (readyAfter < targetCount) {
-            onLog(`\n🆘 Activando fallback automático a ${fallbackSource.toUpperCase()} para garantizar resultados...`);
-            onLog(`💡 Esto ocurre solo porque la búsqueda primaria NO devolvió nada\n`);
-            
-            this.metrics.totalMethods++;
-            const fallbackConfig = { ...config, source: fallbackSource };
-            await this.executeStrategyWithRetry(fallbackConfig, onLog, maxIterations);
-            
-            const readyFinal = this.buffer[BufferStage.READY].length;
-            const foundInFallback = readyFinal - readyAfter;
-            
-            if (foundInFallback > 0) {
-                onLog(`\n✅ Fallback exitoso: ${foundInFallback} leads encontrados en ${fallbackSource.toUpperCase()}`);
-            } else {
-                onLog(`\n⚠️ Tampoco hay resultados en ${fallbackSource.toUpperCase()}`);
-            }
-        }
+        onLog(`💡 Respetando selección del usuario. Usa el método ${userSelectedSource.toUpperCase()} o cambia de estrategia.\n`);
     }
 
     // ═══════════════════════════════════════════════════════════════════════════

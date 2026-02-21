@@ -991,9 +991,8 @@ Responde SOLO JSON:
                     onLog(`[LINKEDIN-EMAIL-ERROR] Falló extracción para ${lead.companyName}: ${error.message}`);
                 }
 
-                // Filtrado Post-Email: Solo avanzamos al análisis IA si conseguimos un EMAIL o WEBSITE.
-                // Podríamos ser estrictos y solo dejar si tienen email, como en Gmail.
-                // Dejémoslo igual de estricto: Si no hay email, no generes análisis caro.
+                // Filtrado Post-Email: Permitimos LinkedIn incluso SIN email encontrado
+                // Si hay email, hacemos análisis IA. Si no, devolvemos igual pero sin análisis.
                 if (lead.decisionMaker?.email) {
                     onLog(`[LINKEDIN-ANALYSIS] 🧠 Investigando a fondo: ${lead.companyName}...`);
 
@@ -1015,12 +1014,16 @@ Responde SOLO JSON:
                     lead.status = 'ready';
                     validEnrichedLeads.push(lead);
                 } else {
-                    onLog(`[LINKEDIN-DISCARD] 🗑️ Descartando ${lead.companyName} por no resolver un Email Válido.`);
+                    // ⚠️ Sin email encontrado, pero devolvemos el perfil de LinkedIn igual
+                    lead.status = 'enriched';
+                    lead.aiAnalysis.summary = 'Perfil de LinkedIn encontrado. Email no disponible - requiere contacto directo.';
+                    validEnrichedLeads.push(lead);
+                    onLog(`[LINKEDIN-PROFILE] ✅ Perfil de LinkedIn agregado SIN email: ${lead.companyName} (contacto: ${lead.decisionMaker?.linkedin || 'N/A'})`);
                 }
             }));
         }
 
-        onLog(`[LINKEDIN] 🏁 Búsqueda finalizada: ${validEnrichedLeads.length}/${targetCount} leads cualificados (Con Email Verificado).`);
+        onLog(`[LINKEDIN] 🏁 Búsqueda finalizada: ${validEnrichedLeads.length}/${targetCount} leads cualificados (Perfiles LinkedIn).`);
         onComplete(validEnrichedLeads);
     }
 }
