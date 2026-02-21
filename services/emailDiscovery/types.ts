@@ -28,6 +28,7 @@ export interface EmailDiscoveryResult {
     confidence: number; // 0-1 (0.5 = 50%, 0.95 = 95%)
     linkedinProfile?: string;
     twitterHandle?: string;
+    website?: string; // Dominio encontrado en el proceso (útil si la request inicial no lo tenía)
     recentPosts?: string[];
     metadata?: {
         attemptNumber: number;
@@ -36,7 +37,7 @@ export interface EmailDiscoveryResult {
     };
 }
 
-export type EmailDiscoverySource = 
+export type EmailDiscoverySource =
     | 'apify_linkedin'      // Intento 1
     | 'google_dorks'        // Intento 2
     | 'website_scrape'      // Intento 3

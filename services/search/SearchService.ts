@@ -941,8 +941,87 @@ Responde SOLO JSON:
             }
         }
 
-        onLog(`[LINKEDIN] 🏁 Búsqueda finalizada: ${validLeads.length}/${targetCount} leads encontrados en ${attempts} intentos.`);
-        onComplete(validLeads);
+        // ═══════════════════════════════════════════════════════════════════════════
+        // STAGE 2.5: ADVANCED OWNER DISCOVERY (The "Sniper" Phase) & AI ANALYSIS
+        // ═══════════════════════════════════════════════════════════════════════════
+        onLog(`[LINKEDIN] 🎯 Fase de Extracción de Emails y Análisis IA para ${validLeads.length} leads...`);
+
+        const validEnrichedLeads: Lead[] = [];
+        const BATCH_SIZE = 3; // Ligeramente menor para no saturar OpenAI/Hunter de golpe
+        for (let i = 0; i < validLeads.length; i += BATCH_SIZE) {
+            if (!this.isRunning) break;
+            const batch = validLeads.slice(i, i + BATCH_SIZE);
+
+            await Promise.all(batch.map(async (lead) => {
+                onLog(`[LINKEDIN-ENRICH] Buscando email corporativo para: ${lead.companyName}...`);
+
+                // 1. Intentar descubrir el email del Owner / Dueño detectado
+                try {
+                    const companyData: CompanyData = {
+                        name: lead.companyName,
+                        website: '', // No tenemos web inicial en LinkedIn X-Ray, dependemos de que EmailDiscovery la encuentre (Hunter/Snovio)
+                        industry: interpreted.industry,
+                        location: interpreted.location
+                    };
+
+                    const ownerData = await emailDiscoveryPipeline.discoverOwnerEmail(
+                        companyData,
+                        (log) => { }
+                    );
+
+                    if (ownerData) {
+                        lead.decisionMaker!.email = ownerData.email;
+                        lead.website = ownerData.website || lead.website; // Asignamos el website encontrado
+                        // Si no teníamos un nombre extraído en LinkedIn limpiamente, tomamos el del discoverer
+                        if (lead.decisionMaker!.name === 'Usuario LinkedIn' || !lead.decisionMaker!.name) {
+                            lead.decisionMaker!.name = ownerData.ownerName;
+                        }
+                        if (lead.decisionMaker!.role === 'Cargo desconocido' || !lead.decisionMaker!.role) {
+                            lead.decisionMaker!.role = ownerData.ownerRole;
+                        }
+
+                        lead.aiAnalysis.salesAngle = `Confidence: ${(ownerData.confidence * 100).toFixed(0)}% (${ownerData.source})`;
+                        lead.status = 'enriched';
+                        onLog(`[LINKEDIN-EMAIL] ✅ Email encontrado: ${ownerData.email} para ${lead.companyName}`);
+                    } else {
+                        onLog(`[LINKEDIN-EMAIL] ⚠️ No se pudo encontrar email seguro para: ${lead.companyName}.`);
+                    }
+
+                } catch (error: any) {
+                    onLog(`[LINKEDIN-EMAIL-ERROR] Falló extracción para ${lead.companyName}: ${error.message}`);
+                }
+
+                // Filtrado Post-Email: Solo avanzamos al análisis IA si conseguimos un EMAIL o WEBSITE.
+                // Podríamos ser estrictos y solo dejar si tienen email, como en Gmail.
+                // Dejémoslo igual de estricto: Si no hay email, no generes análisis caro.
+                if (lead.decisionMaker?.email) {
+                    onLog(`[LINKEDIN-ANALYSIS] 🧠 Investigando a fondo: ${lead.companyName}...`);
+
+                    // 2. Investigación profunda normal
+                    const researchData = await this.deepResearchLead(lead, onLog);
+
+                    // 3. IA Análisis de Cuello de Botella y PerfilPsicologico
+                    const analysis = await this.generateUltraAnalysis(lead, researchData);
+
+                    lead.aiAnalysis.executiveSummary = analysis.executiveSummary;
+                    lead.aiAnalysis.bottleneck = analysis.bottleneck;
+                    lead.aiAnalysis.adStatus = analysis.adStatus;
+                    lead.aiAnalysis.socialStatus = analysis.socialStatus;
+                    lead.aiAnalysis.fullMessage = analysis.personalizedMessage;
+                    lead.aiAnalysis.psychologicalProfile = analysis.psychologicalProfile;
+                    lead.aiAnalysis.businessMoment = analysis.businessMoment;
+                    lead.aiAnalysis.salesAngle = analysis.salesAngle || lead.aiAnalysis.salesAngle;
+
+                    lead.status = 'ready';
+                    validEnrichedLeads.push(lead);
+                } else {
+                    onLog(`[LINKEDIN-DISCARD] 🗑️ Descartando ${lead.companyName} por no resolver un Email Válido.`);
+                }
+            }));
+        }
+
+        onLog(`[LINKEDIN] 🏁 Búsqueda finalizada: ${validEnrichedLeads.length}/${targetCount} leads cualificados (Con Email Verificado).`);
+        onComplete(validEnrichedLeads);
     }
 }
 
